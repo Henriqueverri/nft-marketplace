@@ -1,9 +1,28 @@
 import { useRealtimeRetry, useRealtimeStatus } from './context'
 
-/** Shown while the realtime client cannot be loaded; the rest of the app keeps working. */
+/**
+ * Tells the user when live updates stop. The app keeps working on REST data; when
+ * the connection returns, realtime-backed queries are refetched (reconciliation).
+ */
 export function RealtimeUnavailableNotice() {
   const { state } = useRealtimeStatus()
   const retry = useRealtimeRetry()
+
+  if (state === 'disconnected') {
+    return (
+      <div
+        role="status"
+        data-testid="realtime-notice"
+        className="border-b border-amber/40 bg-surface-card px-4 py-2 text-caption-13 text-cream"
+      >
+        <p className="mx-auto w-full max-w-[1200px]">
+          Conexão em tempo real interrompida. Tentando reconectar… Preços e estoques exibidos podem estar
+          desatualizados e serão conferidos assim que a conexão voltar.
+        </p>
+      </div>
+    )
+  }
+
   if (state !== 'unavailable') return null
 
   return (

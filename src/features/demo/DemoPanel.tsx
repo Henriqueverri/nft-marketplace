@@ -18,7 +18,7 @@ import {
 } from '@/shared/realtime/context'
 import { sessionQueryKey } from '@/shared/session/query-keys'
 import { sessionStore } from '@/shared/session/session-store'
-import { expireSessions, fetchMockState, resetMockState, updateScenario } from './api'
+import { expireSessions, fetchMockState, resetMockState, setRealtimeBlocked, updateScenario } from './api'
 
 const stateLabel: Record<RealtimeConnectionState, string> = {
   idle: 'inativo',
@@ -103,6 +103,9 @@ export function DemoPanel() {
           <Item label="Inscrições" testId="realtime-subscriptions">
             {subscriptions}
           </Item>
+          <Item label="Reconciliações" testId="realtime-reconciliations">
+            {status.reconciliations}
+          </Item>
           <div className="flex gap-2">
             <dt>Versão:</dt>
             <dd data-testid="commit-sha" data-commit={env.commitSha}>
@@ -147,6 +150,16 @@ function ScenarioControls() {
     onError: (error) => announce(errorMessage(error)),
   })
 
+  const block = useMutation({
+    mutationFn: setRealtimeBlocked,
+    onSuccess: (_data, blocked) => {
+      void invalidateState()
+      announce(blocked ? 'Servidor de tempo real bloqueado.' : 'Servidor de tempo real liberado.')
+    },
+    onError: (error) => announce(errorMessage(error)),
+  })
+  const socketBlocked = mockState.data?.socket.blocked ?? false
+
   const reset = useMutation({
     mutationFn: resetMockState,
     onSuccess: () => {
@@ -175,6 +188,15 @@ function ScenarioControls() {
           className="h-8 rounded-[5px] border border-border-field px-3 text-cream outline-none hover:border-brand focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
         >
           Expirar sessão
+        </button>
+        <button
+          type="button"
+          disabled={!mockState.data || block.isPending}
+          aria-pressed={socketBlocked}
+          onClick={() => block.mutate(!socketBlocked)}
+          className="h-8 rounded-[5px] border border-border-field px-3 text-cream outline-none hover:border-brand focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        >
+          Bloquear tempo real
         </button>
         <button
           type="button"

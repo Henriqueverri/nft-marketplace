@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { collectionSchema, networkSchema, nftSchema } from '@/contracts/catalog'
+import { collectionSchema, networkSchema, nftIdSchema, nftSchema, reviewSchema } from '@/contracts/catalog'
 import { isoDateTimeSchema, userIdSchema } from '@/contracts/common'
 import { walletSchema } from '@/contracts/wallets'
 import { PASSWORD_KDF } from './password'
@@ -7,10 +7,10 @@ import { PASSWORD_KDF } from './password'
 /**
  * Shape of the persisted mock database. It is validated on every load, so a
  * corrupted or tampered copy is detected instead of being used.
- * Private data (credentials, sessions, wallets) is keyed by user id.
+ * Private data (credentials, sessions, wallets, favorites) is keyed by user id.
  */
 
-export const DB_SCHEMA_VERSION = 1
+export const DB_SCHEMA_VERSION = 2
 
 const userRecordSchema = z.object({
   id: userIdSchema,
@@ -45,6 +45,9 @@ const sessionRecordSchema = z.object({
 })
 export type SessionRecord = z.infer<typeof sessionRecordSchema>
 
+const favoriteRecordSchema = z.object({ nftId: nftIdSchema, addedAt: isoDateTimeSchema })
+export type FavoriteRecord = z.infer<typeof favoriteRecordSchema>
+
 export const dbStateSchema = z.object({
   schemaVersion: z.literal(DB_SCHEMA_VERSION),
   seedVersion: z.number().int(),
@@ -55,5 +58,11 @@ export const dbStateSchema = z.object({
   networks: z.array(networkSchema),
   collections: z.array(collectionSchema),
   nfts: z.array(nftSchema),
+  /** Home highlights: hero slides and the sidebar spotlight. */
+  highlights: z.object({ slideIds: z.array(nftIdSchema).min(1), spotlightId: nftIdSchema }),
+  reviews: z.array(reviewSchema),
+  /** "Colecionadores também viram", by NFT id. */
+  recommendations: z.record(nftIdSchema, z.array(nftIdSchema)),
+  favoritesByUser: z.record(userIdSchema, z.array(favoriteRecordSchema)),
 })
 export type DbState = z.infer<typeof dbStateSchema>

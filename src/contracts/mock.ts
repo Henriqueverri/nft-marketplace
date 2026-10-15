@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { userIdSchema } from './common'
+import { ethAmountSchema, userIdSchema } from './common'
 
 /**
  * Contracts of the mock control API (/__mock/*). It exists only while the MSW
@@ -50,6 +50,7 @@ export const mockStateSchema = z.object({
     nfts: z.number().int(),
     collections: z.number().int(),
     wallets: z.number().int(),
+    favorites: z.number().int(),
   }),
   users: z.array(
     z.object({
@@ -60,7 +61,11 @@ export const mockStateSchema = z.object({
       activeSessions: z.number().int(),
     }),
   ),
-  socket: z.object({ connections: z.array(socketConnectionInfoSchema) }),
+  socket: z.object({
+    connections: z.array(socketConnectionInfoSchema),
+    /** While blocked, the server drops every connection and refuses new ones. */
+    blocked: z.boolean(),
+  }),
 })
 export type MockState = z.infer<typeof mockStateSchema>
 
@@ -80,3 +85,63 @@ export const emitTestEventRequestSchema = z.object({
 export type EmitTestEventRequest = z.infer<typeof emitTestEventRequestSchema>
 
 export const emitTestEventResponseSchema = z.object({ delivered: z.number().int() })
+
+/**
+ * POST /__mock/nfts/:nftId/update: a server-side change (as if made by the seller).
+ * `priceEth` sets the lowest edition price and shifts the others by the same delta;
+ * `available` sets stock per edition. The NFT version grows and `nft.updated` is
+ * emitted to every connection.
+ */
+export const updateNftRequestSchema = z
+  .object({
+    priceEth: ethAmountSchema.optional(),
+    available: z.record(z.string().regex(/^ed_[a-z0-9-]+$/), z.number().int().nonnegative()).optional(),
+  })
+  .refine((value) => value.priceEth !== undefined || value.available !== undefined, {
+    message: 'Informe priceEth ou available.',
+  })
+export type UpdateNftRequest = z.infer<typeof updateNftRequestSchema>
+
+export const nftEventResponseSchema = z.object({
+  eventId: z.string(),
+  version: z.number().int(),
+  delivered: z.number().int(),
+})
+export type NftEventResponse = z.infer<typeof nftEventResponseSchema>
+
+/**
+ * POST /__mock/nfts/:nftId/replay: re-emits `nft.updated` without changing data.
+ * `duplicate` repeats the last event (same eventId); `stale` sends a new eventId
+ * carrying the previous version and an older price.
+ */
+export const replayNftEventRequestSchema = z.object({ kind: z.enum(['duplicate', 'stale']) })
+
+export const socketBlockRequestSchema = z.object({ blocked: z.boolean() })
+
+/**
+ * POST /__mock/network/delays: one-shot delays for the next requests whose path
+ * starts with `pathPrefix` (and whose method is `method`, when given), consumed in
+ * order before the scenario latency. Used to deliver responses out of order. With
+ * `failure`, those requests also fail that way after the delay, whatever the scenario.
+ */
+export const queueDelaysRequestSchema = z.object({
+  pathPrefix: z.string().startsWith('/api/'),
+  method: z.enum(['GET', 'POST', 'PUT', 'DELETE']).optional(),
+  delaysMs: z.array(z.number().int().min(0).max(10_000)).min(1).max(10),
+  failure: failureModeSchema.exclude(['none']).optional(),
+})
+export type QueueDelaysRequest = z.infer<typeof queueDelaysRequestSchema>
+
+/**
+ * GET /__mock/network/activity: /api/* requests the mock is still handling, and how
+ * many it has handled per `METHOD /path?query` since the last reset. Lets tests wait
+ * for a delayed response, or prove that no request was made, without fixed sleeps:
+ * Playwright cannot observe requests answered by the service worker.
+ */
+export const networkActivitySchema = z.object({
+  inFlight: z.number().int().nonnegative(),
+  requests: z.record(z.string(), z.number().int().positive()),
+})
+export type NetworkActivity = z.infer<typeof networkActivitySchema>
+
+export const userFavoritesResponseSchema = z.object({ nftIds: z.array(z.string()) })

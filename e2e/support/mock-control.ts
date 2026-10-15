@@ -34,6 +34,8 @@ export interface MockStatus {
 
 export interface MockConnections {
   connections: { connectionId: string; userId: string | null }[]
+  /** Connection attempts refused since the socket server was last blocked. */
+  refusedWhileBlocked: number
 }
 
 export interface MockStateSummary {

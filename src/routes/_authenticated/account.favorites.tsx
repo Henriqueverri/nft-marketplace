@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { PlaceholderPage } from '@/shared/layout/PlaceholderPage'
+import { FavoritesPage } from '@/features/favorites/FavoritesPage'
 
 export const Route = createFileRoute('/_authenticated/account/favorites')({
-  component: () => <PlaceholderPage title="Lista de interesse" phase="F2" />,
+  component: FavoritesPage,
 })

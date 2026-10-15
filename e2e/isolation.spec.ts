@@ -122,13 +122,15 @@ test.describe('session isolation @isolation', () => {
     await login(page, ANA)
     await openProfileFromHeader(page)
     await expect(page.getByTestId('realtime-identity')).toHaveText(ANA.id)
-    await expect(page.getByTestId('realtime-subscriptions')).toHaveText('1')
+    // The profile listener plus the app-wide `nft.updated` listener.
+    await expect(page.getByTestId('realtime-subscriptions')).toHaveText('2')
     let state = await callMockControl<MockConnections>(page, '/__mock/socket/connections')
     expect(state.connections).toEqual([expect.objectContaining({ userId: ANA.id })])
 
     await logout(page)
     await expect(page.getByTestId('realtime-identity')).toHaveText('anônima')
-    await expect(page.getByTestId('realtime-subscriptions')).toHaveText('0')
+    // Only the app-wide `nft.updated` listener, which carries no private data, remains.
+    await expect(page.getByTestId('realtime-subscriptions')).toHaveText('1')
     state = await callMockControl<MockConnections>(page, '/__mock/socket/connections')
     expect(state.connections).toHaveLength(1)
     expect(state.connections[0].userId).toBeNull()

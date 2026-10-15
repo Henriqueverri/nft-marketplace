@@ -34,12 +34,18 @@ export type ProfileUpdatedEvent = EventEnvelope<'profile.updated', AccountProfil
   userId: UserId
 }
 
-/** Public (F2): price or availability of an NFT changed. */
+/**
+ * Public: price or availability of an NFT changed. `version` equals the NFT's new
+ * `version` in the REST API, so clients apply an event only when it is newer than
+ * what they hold and REST and realtime never disagree after reconciliation.
+ */
 export type NftUpdatedEvent = EventEnvelope<
   'nft.updated',
   {
     nftId: string
+    /** Lowest current edition price. */
     priceEth: EthAmount
+    compareAtPriceEth: EthAmount | null
     editions: { id: string; priceEth: EthAmount; available: number }[]
   }
 >
@@ -64,6 +70,7 @@ export interface ServerToClientEvents {
   'system.hello': (event: SystemHelloEvent) => void
   'system.pong': (event: SystemPongEvent) => void
   'profile.updated': (event: ProfileUpdatedEvent) => void
+  'nft.updated': (event: NftUpdatedEvent) => void
 }
 
 export interface ClientToServerEvents {

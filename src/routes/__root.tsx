@@ -1,8 +1,11 @@
-import { createRootRouteWithContext, Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
+import { createRootRouteWithContext, Outlet, useLocation } from '@tanstack/react-router'
+import { MobileTabBar } from '@/app/layout/MobileTabBar'
+import { MobileTopBar, SiteHeader } from '@/app/layout/SiteHeader'
+import { SiteFooter } from '@/app/layout/SiteFooter'
 import type { RouterContext } from '@/app/router'
-import { useLogout, useSession } from '@/features/auth/queries'
+import { useNftRealtimeSync } from '@/features/catalog/realtime-sync'
 import { DemoPanel } from '@/features/demo/DemoPanel'
-import { useAnnounce } from '@/shared/feedback/announcer-context'
+import { cn } from '@/lib/utils'
 import { DESKTOP_MEDIA_QUERY, useMediaQuery } from '@/shared/hooks/use-media-query'
 import { NotFoundPage } from '@/shared/layout/NotFoundPage'
 import { RealtimeUnavailableNotice } from '@/shared/realtime/RealtimeUnavailableNotice'
@@ -12,89 +15,39 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   notFoundComponent: NotFoundPage,
 })
 
-const navLinkClass =
-  'rounded-sm px-1 py-0.5 text-body-14 text-cream hover:text-brand-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring'
-
 const AUTH_PATHS = ['/login', '/signup']
 
 function RootLayout() {
   const isDesktop = useMediaQuery(DESKTOP_MEDIA_QUERY)
   const pathname = useLocation({ select: (location) => location.pathname })
-  // On mobile the auth screens are standalone pages with their own logo (Figma).
-  const showHeader = isDesktop || !AUTH_PATHS.includes(pathname)
+  useNftRealtimeSync()
+
+  // On mobile the auth screens are standalone pages with their own logo (Figma), and
+  // the NFT detail replaces the tab bar with its buy bar.
+  const authPage = AUTH_PATHS.includes(pathname)
+  const detailPage = pathname.startsWith('/nfts/')
+  const showTabBar = !isDesktop && !authPage && !detailPage
+  // Room for the fixed bottom bars, so the footer and demo panel are never covered.
+  const bottomSpace = isDesktop ? '' : showTabBar ? 'pb-[88px]' : detailPage ? 'pb-[180px]' : ''
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      {showHeader ? <SiteHeader /> : null}
+    <div className={cn('flex min-h-dvh flex-col', bottomSpace)}>
+      <a
+        href="#conteudo"
+        className="sr-only z-50 rounded-[6px] bg-brand px-4 py-2 font-bold text-ink focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+      >
+        Pular para o conteúdo
+      </a>
+      {isDesktop ? <SiteHeader /> : authPage ? null : <MobileTopBar />}
       <RealtimeUnavailableNotice />
-      <main className="flex-1">
+      {/* At least a viewport tall: while a route or its data loads, the footer stays
+          below the fold instead of jumping down when the content arrives. */}
+      <main id="conteudo" tabIndex={-1} className="min-h-dvh flex-1 outline-none">
         <Outlet />
       </main>
+      {isDesktop || !authPage ? <SiteFooter /> : null}
       <DemoPanel />
+      {showTabBar ? <MobileTabBar /> : null}
     </div>
-  )
-}
-
-/** Provisional header; the Figma header lands in F2. */
-function SiteHeader() {
-  const session = useSession()
-  const logout = useLogout()
-  const navigate = useNavigate()
-  const announce = useAnnounce()
-  const href = useLocation({ select: (location) => location.href })
-  const user = session.data?.user
-
-  function handleLogout() {
-    logout.mutate(undefined, {
-      onSettled: async () => {
-        await navigate({ to: '/', replace: true })
-        announce('Você saiu da sua conta.')
-      },
-    })
-  }
-
-  return (
-    <header className="border-b border-border-strong">
-      <nav
-        aria-label="Principal"
-        className="mx-auto flex w-full max-w-[1200px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-4"
-      >
-        <Link to="/" className="text-body-16 font-bold tracking-widest text-cream">
-          KURIO
-        </Link>
-        <Link to="/" className={navLinkClass} activeProps={{ className: 'text-brand-accent' }}>
-          Início
-        </Link>
-        <Link to="/cart" className={navLinkClass}>
-          Carrinho
-        </Link>
-        <Link to="/account/profile" className={navLinkClass}>
-          Meu perfil
-        </Link>
-        {user ? (
-          <>
-            <span data-testid="header-user" className="text-body-14 text-text-secondary">
-              {user.displayName}
-            </span>
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={logout.isPending}
-              className={navLinkClass}
-            >
-              {logout.isPending ? 'Saindo…' : 'Sair'}
-            </button>
-          </>
-        ) : (
-          <Link
-            to="/login"
-            search={AUTH_PATHS.includes(href.split('?')[0]) || href === '/' ? {} : { redirect: href }}
-            className={navLinkClass}
-          >
-            Entrar
-          </Link>
-        )}
-      </nav>
-    </header>
   )
 }

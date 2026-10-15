@@ -2,6 +2,7 @@ import {
   expireSessionsResponseSchema,
   mockScenarioSchema,
   mockStateSchema,
+  socketBlockRequestSchema,
   type MockScenario,
 } from '@/contracts/mock'
 import { mockControlHttp, parseResponse } from '@/shared/api/http'
@@ -26,4 +27,8 @@ export async function expireSessions() {
 export async function resetMockState() {
   const { data } = await mockControlHttp.post('/reset')
   return parseResponse(mockStateSchema, data)
+}
+
+export async function setRealtimeBlocked(blocked: boolean) {
+  await mockControlHttp.post('/socket/block', socketBlockRequestSchema.parse({ blocked }))
 }

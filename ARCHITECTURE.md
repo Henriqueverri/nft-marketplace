@@ -78,7 +78,7 @@ Três ajustes foram necessários. Todos foram descobertos e confirmados empirica
 - `public/mockServiceWorker.js` é gerado por `npx msw init public --save` e mantido na versão do pacote (`msw.workerDirectory` no `package.json`).
 - A Vercel serve o worker com `Cache-Control: no-cache, no-store, must-revalidate`, para evitar que uma versão antiga fique registrada.
 - A SPA usa rewrite de todas as rotas para `index.html`. Limitação: rotas inexistentes respondem HTTP 200 com o app, que então renderiza a página 404.
-- **Custo de performance:** o chunk do MSW tem cerca de 434 kB (cerca de 162 kB gzip) e é carregado antes do primeiro render. Será medido na sondagem de Lighthouse (F2).
+- **Custo de performance:** o chunk do MSW tem cerca de 465 kB (cerca de 172 kB gzip) e é carregado antes do primeiro render. Na sondagem de Lighthouse da F2 (seção 24), ele é o principal custo do perfil mobile.
 
 ## 5. Estado remoto e HTTP
 
@@ -108,6 +108,8 @@ Três ajustes foram necessários. Todos foram descobertos e confirmados empirica
 - Os testes chamam a API de controle de dentro da página (`fetch` no contexto do navegador). A requisição passa pelo service worker do MSW, como qualquer requisição do app. Não há `page.route`.
 - **Teste pulado de propósito:** `deployed build matches the expected commit` só roda quando `EXPECTED_COMMIT_SHA` está definido. No build local, o SHA embutido é sempre `local`, porque `VERCEL_GIT_COMMIT_SHA` só existe na Vercel. Por isso o teste só tem sentido contra o deploy, com `npm run test:e2e:deploy`. Localmente e no CI, ele aparece como 2 pulados (um por projeto).
 - **Arquivos (F1):** `smoke` (rotas públicas, guard das privadas, MSW e socket anônimo), `realtime-poc` (F0), `auth` (cadastro, login, logout, expiração, retorno à rota, open redirect, proteção de rotas), `isolation` (troca A→B sem refresh, vazamento em storage, resposta atrasada, socket e eventos), `mocks` (reset, persistência, senha ausente, falhas de API e de storage).
+- **Arquivos (F2):** `catalog` (busca, filtros combinados, ordenação, paginação, URL com voltar/avançar/refresh, parâmetros inválidos, respostas fora de ordem), `nft-detail` (acesso direto, NFT inexistente, edições e quantidade, abas por teclado, carrosséis), `favorites` (favoritar e desfazer, visitante, rollback, mudanças concorrentes com uma falha atrasada, NFT travado enquanto a mudança está pendente, troca de usuário com mudança pendente, isolamento A/B, API sem sessão, estados da lista), `loading-states` (skeleton, vazio, erro e nova tentativa), `realtime-nft` (`nft.updated`, duplicado e antigo, socket bloqueado e reconciliação, três trocas de usuário seguidas) e `responsive-a11y` (larguras, axe, teclado, movimento reduzido).
+- **Esperas sem tempo fixo (F2):** o Playwright não enxerga requisições respondidas pelo service worker do MSW (`waitForResponse` não dispara). Em vez de pausas, o mock expõe `GET /__mock/network/activity` (requisições `/api/*` em andamento e contagem por `MÉTODO /caminho?query`) e `refusedWhileBlocked` em `GET /__mock/socket/connections`. Os testes esperam "o mock respondeu tudo", "o servidor bloqueado recusou N reconexões" ou "nenhuma leitura REST de preço foi feita", com `expect.poll` e timeout explícito. A única pausa fixa que resta é a da F0 (`realtime-poc`, 65 s), que mede justamente a estabilidade da conexão ao longo do tempo.
 - Cada teste roda num contexto de navegador novo: `localStorage` próprio, portanto banco simulado próprio. Não há estado compartilhado entre testes.
 - **CI** (`.github/workflows/ci.yml`): Node 24, `npm ci`, `npm run verify`, Chromium do Playwright com dependências do sistema e `npx playwright test` com a suíte completa, sem filtro de tags. O relatório HTML e os traces sobem como artefato, mesmo quando os testes falham (`if: !cancelled()`). O workflow não usa secrets.
 
@@ -127,6 +129,13 @@ Cada item segue o formato: problema, escolha, alternativa descartada e motivo.
 - **D10, autenticação do socket pelo `auth` do CONNECT:** detalhes na seção 14. **Descartado:** token na query da URL.
 - **D11, navegação imperativa ao perder a sessão:** o layout protegido navega num `useEffect` disparado uma vez por mudança de época. **Descartado:** o componente `<Navigate>`. Ele navega de novo a cada render com props novas e, enquanto a rota protegida continua montada durante a transição, isso virou um laço que travou a thread principal (o `page.evaluate` do Playwright não retornava). Reproduzido e corrigido na F1.
 - **D12, modal de autenticação realmente modal:** no desktop, o modal prende o foco e torna o resto da página inerte, como pede o padrão de diálogo acessível. Consequência: o painel da demonstração fica inacessível com o modal aberto; para usá-lo, fecha-se o modal (X ou Esc). **Descartado:** `modal={false}`, que tiraria o foco preso só para facilitar a demonstração.
+- **D13, estado do catálogo só na URL (F2):** **escolha:** search params validados pela rota, sem store de filtros. **Descartado:** um store (Zustand ou contexto) sincronizado com a URL, que cria duas fontes de verdade e quebra voltar/avançar quando elas divergem.
+- **D14, respostas fora de ordem pelo cache (F2):** **escolha:** uma chave de query por combinação de parâmetros. **Descartado:** contador de requisição ou `AbortController` manual, que reimplementam o que o TanStack Query já garante por chave.
+- **D15, rollback por item no favorito (F2):** **escolha:** desfazer só a mudança do NFT que falhou. **Descartado:** restaurar o retrato da lista tirado no `onMutate`, que apagaria outros favoritos clicados enquanto a requisição viajava.
+- **D16, versão no evento (F2):** **escolha:** aplicar `nft.updated` só com `version` maior que a do cache, além da deduplicação por `eventId`. **Descartado:** confiar só no `eventId`, que não protege contra um evento antigo reenviado com id novo.
+- **D17, reconciliação ao reconectar (F2):** **escolha:** depois de uma queda, refazer as queries públicas marcadas com `meta.reconcileOnReconnect`. **Descartado:** polling periódico, que traria o preço "por outro caminho" mesmo com o socket ativo e esconderia falhas do tempo real.
+- **D18, recusa de conexão do socket bloqueado (F2, revisão):** **problema:** só fechar o WebSocket deixava o `socket.io-client` esperando o timeout de 20 s; a primeira solução disparava `error` no WebSocket da página por `raw.client.socket`, uma propriedade que existe na classe do `@mswjs/interceptors` 0.39 (MSW 2.15), mas não no tipo público do MSW. **Escolha:** responder com um frame que não é pacote engine.io válido (`x`), pela API pública `client.send`. O `engine.io-parser` 5 o decodifica como pacote de erro, e o `engine.io-client` 6 falha a tentativa na hora; o `socket.io-client` emite `connect_error` e tenta de novo com backoff, como diante de um servidor inalcançável. **Descartado:** a propriedade interna do MSW, que pode sumir numa atualização sem erro de tipo; e responder `CONNECT_ERROR` do Socket.IO, que o cliente trata como recusa definitiva e não reconecta. A dependência restante é o protocolo engine.io (estável desde a v4) e está isolada em `refuseConnection` (`src/mocks/socket.ts`).
+- **D19, uma mudança de favorito por NFT (F2, revisão):** **problema:** o botão bloqueava só a si mesmo (`isPending` da própria instância); ao abrir o detalhe com a requisição do card em voo, um segundo clique começava outra mudança do mesmo NFT, e o rollback atrasado da primeira podia desfazer a segunda. **Escolha:** todo botão do NFT fica `aria-disabled` enquanto houver mutation pendente para ele (`useIsMutating` filtrado pelo NFT e pelo usuário), e o rollback só acontece se a mutation que falhou ainda é a mais recente daquele NFT. **Descartado:** uma fila de mutations por NFT (`scope`), que esconderia do usuário que a mudança anterior ainda está pendente.
 
 ## 9. Resultados da F0
 
@@ -256,11 +265,17 @@ Ele usa só a API de controle, via `mockControlHttp`; nunca toca o banco. A API 
 | `GET /__mock/status` | mock ativo e número de conexões |
 | `GET /__mock/state` | resumo sem segredos; funciona com o banco corrompido |
 | `GET`/`PUT /__mock/scenario` | `{ latencyMs: 0..10000, failure: none \| server-error \| unavailable \| offline, realtimeClient?: available \| unavailable }`, persistido em `kurio:mock-scenario:v1` |
-| `POST /__mock/reset` | seed, cenário padrão e fechamento de todos os sockets |
+| `POST /__mock/reset` | seed, cenário padrão, fechamento de todos os sockets; a partir da F2 também desbloqueia o socket e limpa atrasos, o registro de requisições e eventos reenviáveis |
 | `POST /__mock/session/expire` | vence as sessões ativas (opcional `{ userId }`) |
 | `POST /__mock/socket/disconnect` | fecha todos os sockets |
-| `GET /__mock/socket/connections` | conexões e seus donos |
+| `GET /__mock/socket/connections` | conexões e seus donos; `refusedWhileBlocked`: tentativas recusadas desde o último bloqueio (F2) |
 | `POST /__mock/users/:userId/profile` | muda o nome no banco e emite `profile.updated` para o dono ou para todos (`delivery: broadcast`, simula um bug de roteamento) |
+| `POST /__mock/socket/block` | `{ blocked }`: com `true`, derruba as conexões e recusa as novas, como um servidor inalcançável (F2) |
+| `POST /__mock/network/delays` | `{ pathPrefix, method?, delaysMs[], failure? }`: atrasos de uso único para as próximas requisições do prefixo (e do método), para entregar respostas fora de ordem; com `failure`, essas requisições também falham, independentemente do cenário (F2) |
+| `GET /__mock/network/activity` | `{ inFlight, requests }`: requisições `/api/*` em andamento e contagem por `MÉTODO /caminho?query` desde o último reset, para os testes esperarem sem tempo fixo (F2) |
+| `POST /__mock/nfts/:nftId/update` | `{ priceEth?, available? }`: muda preço ou estoque no banco e emite `nft.updated` para todos (F2) |
+| `POST /__mock/nfts/:nftId/replay` | `{ kind: duplicate \| stale }`: reenvia o último evento (mesmo `eventId`) ou o anterior com `eventId` novo (F2) |
+| `GET /__mock/users/:userId/favorites` | ids favoritados de um usuário, para conferir isolamento de fora do app (F2) |
 
 O cenário de rede vale só para `/api/*`; a API de controle nunca sofre atraso nem falha. `offline` responde com erro de rede (`HttpResponse.error()`).
 
@@ -286,9 +301,102 @@ Execuções locais em 15/10/2026, mesmo ambiente da F0:
 - Bundle: o chunk inicial do app tem 238 kB (75 kB gzip); o zod entra num chunk compartilhado de 53 kB (20 kB gzip); o cliente de tempo real, carregado sob demanda, tem 31 kB (10 kB gzip). O chunk do MSW continua com cerca de 454 kB (169 kB gzip).
 - **Validação remota pendente:** CI no GitHub e deploy na Vercel desta fase dependem do push.
 
-## 18. Limitações e pendências
+## 18. Catálogo, contratos e API (F2)
 
-- As telas, exceto as de autenticação, são provisórias, e o header é temporário (F2).
+**Contratos** (`src/contracts/catalog.ts`, `favorites.ts`, `events.ts`, `mock.ts`): o NFT ganhou `attributes`, `popularity`, `contractAddress` e `royaltyPercent`; o detalhe acrescenta coleção, rede e `rating { average, count }`. A listagem é `nftListQuerySchema` (busca até 60 caracteres, coleções, redes, preço mínimo e máximo, visão `all | new | trending`, ordenação `recent | price-asc | price-desc | name`, página de 9 itens) e responde página + facetas. O evento `nft.updated` leva o novo `priceEth`, `compareAtPriceEth` e preço e estoque de cada edição, com `version` no envelope.
+
+| Método e rota | Sucesso | Erros principais |
+| --- | --- | --- |
+| `GET /api/nfts` | 200 página + facetas | 422 (`minPrice > maxPrice`, parâmetro inválido) |
+| `GET /api/nfts/featured` | 200 `{ slides, spotlight }` | — |
+| `GET /api/nfts/:nftId` | 200 `NftDetail` | 404 "NFT não encontrado." |
+| `GET /api/nfts/:nftId/related` | 200 `{ items }` (mesma coleção, até 8) | 404 |
+| `GET /api/nfts/:nftId/recommendations` | 200 `{ items }` | 404 |
+| `GET /api/nfts/:nftId/reviews` | 200 `{ items }`, mais recentes primeiro | 404 |
+| `GET /api/account/favorites` | 200 `{ items }` | 401 |
+| `PUT`/`DELETE /api/account/favorites/:nftId` | 200 / 204, idempotentes | 401, 404 |
+
+- A busca ignora acentos e caixa e procura em nome, coleção, criador e atributos. Cada faceta conta aplicando todos os filtros menos o da própria dimensão, para o usuário ver quantos itens ganharia ao marcar outra opção. Toda ordenação termina num desempate por id, para a paginação ser estável.
+- O seed (versão 2) liga os 9 NFTs do Figma às 4 artes exportadas (WebP 320/640/960), com 4 tiragens (1/1, 1/10, 1/50, aberta), avaliações, recomendações, destaques e favoritos iniciais (Ana: Neon Vessel e Golden Beat; Bruno: Ivory Baron). A integridade confere as novas referências.
+- Componentes nunca importam handlers nem o banco: falam com `src/features/*/api.ts` (Axios + zod). Os favoritos derivam o usuário só do token.
+
+## 19. Estado na URL (F2)
+
+- O estado do catálogo vive **só** na URL da rota `/` (`validateSearch` com zod e `stripSearchParams` dos valores padrão). Não existe estado de filtro paralelo: os componentes leem da rota e escrevem com `navigate` (`use-catalog-navigation.ts`). Cada mudança é uma entrada de histórico, então voltar, avançar, refresh e link compartilhado restauram a mesma tela.
+- Toda mudança que não seja de página volta para a página 1. Uma página além do fim é trocada pela última, com `replace`.
+- Parâmetros inválidos não quebram a tela: cada campo tem `.catch` para um valor seguro, listas são filtradas, ordenadas e sem duplicatas (URLs equivalentes compartilham cache), preços são arredondados a 2 casas e uma faixa invertida é trocada. O router regrava a URL com a forma normalizada (teste com `page=abc`, `sort=zzz`, rede desconhecida e faixa invertida).
+- A busca só escreve na URL após 350 ms sem digitar ou no Enter. O controle de preço guarda um rascunho até "Aplicar".
+
+## 20. Queries, respostas fora de ordem e favoritos (F2)
+
+- **Chaves:** `['nfts', 'list', params]`, `['nfts', 'detail', id]`, `related`, `recommendations`, `reviews` e `featured`. Favoritos são privados: `['user', userId, 'favorites']`, limpos em toda troca de sessão (seção 13).
+- **Fora de ordem:** cada combinação de parâmetros é uma entrada própria do cache, e a tela observa só a chave da URL atual. Uma resposta antiga que chega por último apenas preenche a entrada dela (ou é descartada, porque o TanStack Query cancela a requisição de uma chave que ficou sem observadores). `keepPreviousData` mantém a página anterior visível (com `aria-busy`) enquanto a nova carrega, mas uma nova busca que falha mostra o erro, não a lista anterior como se fosse o resultado. Testado com `/__mock/network/delays` (2,5 s na primeira busca, 0 na segunda).
+- **Favorito otimista:** a lista muda na hora; em caso de erro, só a mudança daquele NFT é desfeita (desfazer um retrato da lista inteira apagaria outros cliques em andamento) e o erro é anunciado. Enquanto a requisição está em voo, **todo** botão daquele NFT fica `aria-disabled` (card, detalhe, lista), e o rollback só vale se a mutation ainda for a mais recente do NFT (D19). Só a última mutação pendente refaz a lista, para um refetch não sobrescrever cliques ainda em voo. Se a sessão mudou, nada é escrito no cache nem anunciado; a requisição da sessão anterior é abortada no cliente e, se ainda chegar ao servidor, recebe 401 (sessão revogada no logout), sem encerrar a sessão nova (o interceptor só encerra a sessão da mesma época).
+- **Cobertura de concorrência:** dois NFTs com falha atrasada num deles e sucesso no outro (o refetch da lista é atrasado de propósito, para provar que o NFT que deu certo foi mantido pelo rollback por item, não pelo REST); detalhe aberto com a mudança do card em voo (botão travado, sem segunda requisição); troca de usuário com a mudança de Ana em voo (Bruno não é afetado, nada é anunciado a ele, a lista de Ana no servidor não muda). Os três usam `/__mock/network/delays` com `failure` por rota.
+- Visitantes que tocam no coração vão para `/login?redirect=<página atual>`.
+
+## 21. `nft.updated` (F2)
+
+- **Emissão:** só pela API de controle (`/__mock/nfts/:nftId/update`), que grava no banco primeiro e emite depois; REST e evento sempre concordam. Nenhum componente React emite eventos.
+- **Assinatura:** global, em `__root.tsx` (`useNftRealtimeSync`). Atualiza o detalhe, as listas, os destaques, relacionados, recomendações e os favoritos **do usuário atual**. Listas que dependem do preço (ordenação ou faixa de preço) são invalidadas, porque o NFT pode mudar de página. Quando o detalhe está na tela, o novo preço é anunciado.
+- **Duplicado e antigo:** o provider descarta `eventId` repetido; cada cópia só aceita `version` estritamente maior, então um evento atrasado nunca volta o preço. Testado com `/replay`.
+- **Dados privados:** o evento é público e não carrega dados de usuário; a única entrada privada tocada é a do usuário da sessão atual, cujo cache é zerado em toda troca.
+- **Socket indisponível:** com o socket bloqueado, o app mantém o estado do REST e mostra "Conexão em tempo real interrompida. Tentando reconectar…" (`role=status`). Ao reconectar depois de uma queda, todas as queries marcadas com `meta.reconcileOnReconnect` são refeitas e o contador "Reconciliações" do painel sobe. Teste-prova: com o socket bloqueado, o preço muda no banco (a API já responde o novo valor); o teste espera o servidor recusar 3 reconexões e confere que a tela continua com o preço antigo, sem reconciliação e **sem nenhuma leitura REST de preço** (contagem de `GET /api/nfts…` e `GET /api/account/favorites` igual à de antes). Ao desbloquear, a tela mostra o novo preço, o contador de reconciliações vai a 1, a contagem de leituras REST sobe (a reconciliação foi o caminho) e um refresh mostra o mesmo valor que a API.
+- **Bloqueio realista:** durante o bloqueio, o mock nunca envia o OPEN do engine.io e responde com um frame inválido, pela API pública do MSW; o cliente falha a tentativa na hora e reconecta com backoff (D18). Só fechar a conexão deixava o `socket.io-client` esperando o timeout de 20 s antes de tentar de novo.
+- **Listeners:** a assinatura de `nft.updated` não muda com a sessão; o socket, sim (um por época, seção 14). Por isso o painel mostra 1 inscrição para visitante e 2 no perfil (perfil + catálogo); o teste de isolamento da F1 foi ajustado para esses números. Depois de três trocas de usuário seguidas sem refresh (Ana → Bruno → Ana → Bruno), a cada troca há uma conexão (do usuário atual), uma inscrição e um efeito por evento, sem eventos ignorados.
+- **Ordem e sessão:** os ids vistos ficam num conjunto por socket (por época), e o socket anterior perde todos os listeners antes do `disconnect`; um evento tardio da sessão anterior não tem mais por onde entrar. Se o chunk do cliente termina de carregar depois que a sessão mudou, o socket criado é descartado sem conectar (`autoConnect: false`).
+
+## 22. Telas e componentes (F2)
+
+- **Layout:** `SiteHeader` (desktop), `MobileTopBar`, `MobileTabBar` (fixa, fora das páginas de autenticação e do detalhe, que tem a barra de compra) e `SiteFooter`. Link "Pular para o conteúdo". O `main` tem pelo menos a altura da tela, para o rodapé não pular enquanto rota e dados carregam.
+- **Home** (`/`): busca e gaveta de filtros no mobile, carrossel de destaques, catálogo com barra lateral (≥ 1024 px), visões, ordenação, grade e paginação, banner de destaque, promoções e "Diário da Cunhagem".
+- **Detalhe** (`/nfts/$nftId`): galeria, edições (radiogroup, esgotadas desabilitadas), quantidade limitada por edição e estoque, favoritar, compartilhar, abas "Detalhes do NFT" e "Avaliações" (carregadas só quando abertas), carrosséis "Mais desta coleção" e "Colecionadores também viram", barra de compra fixa no mobile. Estados: carregando, não encontrado, erro com nova tentativa.
+- **Favoritos** (`/account/favorites`, privada): carregando, vazio, erro com nova tentativa e lista; ao remover um card, o foco volta ao título.
+- **shadcn/ui:** `tabs`, `select`, `slider`, `skeleton` e `dialog` (gaveta de filtros e zoom). Ícones do Figma em `src/assets/icons`, pintados com `currentColor` (`shared/ui/Icon.tsx`).
+- **Acessibilidade:** rótulos em todos os controles; `aria-pressed` nos favoritos; `aria-current` em página e visão; status ao vivo para contagem, carregamento e anúncios; foco vai para o status do catálogo ao trocar de página; foco visível em todos os controles; `prefers-reduced-motion` desliga animações e rolagem suave.
+
+## 23. Desvios do Figma (F2)
+
+- **Galeria:** o Figma mostra 4 miniaturas, mas cada NFT tem uma arte; as miniaturas são enquadramentos da mesma obra (completa e detalhes), não imagens inventadas.
+- **Busca no desktop:** fica na barra lateral do catálogo; o ícone de lupa do header leva o foco até ela.
+- **"Colecionadores também viram":** no Figma aparece só no carrinho; foi usado no detalhe para as recomendações.
+- **Itens fora da demonstração** (Criadores, Aprenda, escanear, "Ler mais", newsletter): mantêm a composição, mas anunciam que não fazem parte da demonstração, em vez de levar a telas vazias.
+- **Comprar:** a F2 para na seleção. O botão mostra um aviso com a edição, a quantidade e o total; carrinho e checkout entram na F3.
+- **Edição inicial:** a mais barata disponível, que corresponde ao preço do card.
+- **Topo mobile:** uma barra com "KURIO" e "Entrar" (ou usuário e "Sair") para manter o acesso à sessão, que o frame mobile não mostra.
+
+## 24. Resultados da F2
+
+Execuções locais em 15/10/2026, mesmo ambiente das fases anteriores:
+
+- `npm run verify` (typecheck, lint, build): passou.
+- `npx playwright test`, suíte completa, desktop + mobile, depois da revisão final: **162 aprovados, 2 pulados, 0 falhas** (4,1 min). Os 2 pulados são a checagem do commit do deploy (seção 7). Antes da revisão eram 156 aprovados; os 6 novos são os 3 testes de concorrência de favoritos nos dois projetos.
+- **Lighthouse 13.5.0** (`npm run lighthouse`), build de produção com MSW ativo e cenário padrão. Duas rodadas depois da revisão (faixa mín.–máx.), comparadas à medição anterior:
+
+| Página | Perfil | Performance antes → depois | Acessib. | Boas práticas | SEO antes → depois | FCP | LCP | TBT | CLS |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Início | mobile | 67–72 → 72–75 | 100 | 100 | 92 → 100 | 3,3–3,5 s | 4,6–4,9 s | 140–160 ms | 0 |
+| Início | desktop | 98 → 98 | 100 | 100 | 92 → 100 | 0,8 s | 1,0–1,1 s | 10 ms | 0,004 |
+| Detalhe | mobile | 75 → 76–77 | 100 | 100 | 92 → 100 | 3,3–3,4 s | 4,3 s | 140–170 ms | 0 |
+| Detalhe | desktop | 98 → 98 | 100 | 100 | 92 → 100 | 0,7–0,8 s | 1,0 s | 10 ms | 0 |
+
+- **Meta mobile de 90: não atingida.** A nota mobile oscila cerca de ±4 pontos entre rodadas sem mudança de código (a home já mediu 67 e 75 com o mesmo build).
+- **Causa conhecida:** no mobile (CPU 4× mais lenta e rede 4G simulada), o primeiro render espera o chunk do MSW (cerca de 172 kB gzip, o maior do app, com cerca de 69 kB não usados no carregamento) e o registro do worker; só então as queries começam e as imagens são descobertas. O LCP da home mobile é a primeira imagem da grade do catálogo; o do detalhe, a imagem principal. O LCP não pode ser descoberto no HTML inicial (SPA sem SSR), por isso a auditoria `lcp-discovery` continua falhando. O MSW não foi desligado nem adiado: ele é a demonstração, e as requisições não podem sair antes de o worker controlar a página.
+- **Otimizações da revisão:**
+  - `public/robots.txt`: antes, o fallback da SPA devolvia o `index.html` em `/robots.txt` (41 erros de sintaxe). Agora o arquivo libera o site e exclui as rotas privadas e de autenticação. SEO 92 → 100. Na Vercel, arquivos estáticos têm precedência sobre o rewrite.
+  - Os dois primeiros cards da grade (a primeira linha no celular) carregam com `loading="eager"` e `fetchpriority="high"`; antes, a imagem do LCP era `lazy`. O atraso de renderização do LCP da home caiu de cerca de 390 ms para cerca de 230–260 ms.
+- **Testado e descartado:** `modulepreload` do chunk do MSW no `index.html` (plugin do Vite), para baixá-lo junto com o entry. Em A/B no mesmo ambiente: LCP 0,1–0,4 s melhor, mas FCP 0,2–0,4 s pior (os dois downloads disputam a banda simulada) e nota +1–2, dentro da oscilação. Sem ganho demonstrável, o plugin não foi mantido.
+- **Fontes:** Roboto Mono do próprio bundle, subset latin, `font-display: swap` (auditoria `font-display` aprovada); não estão no caminho crítico do LCP.
+- **Corrigido pela sondagem:** o detalhe tinha CLS de 0,55 no desktop. A largura da galeria dependia da imagem, e o rodapé subia e descia enquanto a página carregava. A home tinha 0,16, porque os indicadores do carrossel surgiam depois dos dados. Os três casos agora reservam o espaço. A acessibilidade mobile subiu de 97–99 para 100: os indicadores do banner ficavam sob o link "Explorar" (alvo de toque pequeno), e os títulos da aba pulavam um nível.
+
+## 25. Limitações e pendências
+
+- Carrinho, checkout, pedidos, perfil completo e carteiras continuam provisórios (F3 a F5).
+- O `nft.updated` de uma aba não chega a outra (abaixo); outra aba só vê a mudança ao refazer as queries.
+- A performance mobile fica em 72–77, abaixo da meta de 90, limitada pelo MSW antes do primeiro render (seção 24); uma API real removeria esse custo.
+- Um refetch da lista de favoritos disparado por outro motivo (reconciliação após reconexão) enquanto uma mudança está em voo pode mostrar o estado do servidor por um instante; o refetch feito ao fim da mudança corrige a tela. O botão continua travado durante esse intervalo.
+- `GET /__mock/network/activity` informa quando o mock **respondeu**; a entrega ao `fetch` da página ainda passa pelo service worker. Os testes fazem mais uma chamada de controle (que passa pela mesma fila do worker) antes de conferir a tela.
+- A recusa de conexão do socket bloqueado depende do tratamento de frames inválidos do `engine.io-client` 6 / `engine.io-parser` 5 (D18). Uma atualização desses pacotes deve passar pelos testes `realtime-nft` e `realtime-poc`.
 - Autenticação simulada no navegador (seção 11): o token fica no `localStorage`, legível por scripts da página.
 - Cada aba tem seu próprio servidor simulado. As abas compartilham o banco pelo `localStorage`, mas um evento emitido numa aba não chega aos sockets de outra.
 - Com o modal de autenticação aberto no desktop, o painel da demonstração fica inerte (D12).

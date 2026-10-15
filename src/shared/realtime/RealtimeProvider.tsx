@@ -53,6 +53,8 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     let disposed = false
     const currentRunKey = `${epoch}:${attempt}`
     const seenEventIds = new Set<string>()
+    // Set by a drop or a failed attempt; the next connection must reconcile with REST.
+    let missedEvents = false
     const setStatus = (update: (current: RealtimeStatus) => RealtimeStatus) =>
       setTagged((current) => ({
         runKey: currentRunKey,
@@ -64,9 +66,19 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       socket = created
 
       socket.on('connect', () => {
-        setStatus((s) => ({ ...s, state: 'connected', connectCount: s.connectCount + 1 }))
+        setStatus((s) => ({
+          ...s,
+          state: 'connected',
+          connectCount: s.connectCount + 1,
+          reconciliations: s.reconciliations + (missedEvents ? 1 : 0),
+        }))
+        if (missedEvents) {
+          missedEvents = false
+          void queryClient.invalidateQueries({ predicate: (query) => query.meta?.reconcileOnReconnect === true })
+        }
       })
       socket.on('disconnect', (reason) => {
+        missedEvents = true
         setStatus((s) => ({
           ...s,
           state: 'disconnected',
@@ -75,7 +87,12 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         }))
       })
       socket.on('connect_error', (error) => {
-        if (error.message !== 'UNAUTHENTICATED') return
+        missedEvents = true
+        if (error.message !== 'UNAUTHENTICATED') {
+          // Server unreachable: socket.io-client keeps retrying with backoff.
+          setStatus((s) => (s.state === 'connecting' ? { ...s, state: 'disconnected' } : s))
+          return
+        }
         // The server refused the token: let the REST API confirm it (a 401 there ends
         // the session and a new, anonymous socket replaces this one).
         setStatus((s) => ({ ...s, state: 'rejected' }))

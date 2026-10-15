@@ -1,9 +1,14 @@
 import { http, HttpResponse } from 'msw'
 import { z } from 'zod'
 import { displayNameSchema } from '@/contracts/account'
+import { userIdSchema } from '@/contracts/common'
 import {
   emitTestEventRequestSchema,
   mockScenarioSchema,
+  queueDelaysRequestSchema,
+  replayNftEventRequestSchema,
+  socketBlockRequestSchema,
+  updateNftRequestSchema,
   type MockState,
 } from '@/contracts/mock'
 import { profileUpdatedEvent, updateDisplayName } from './api/account'
@@ -12,13 +17,18 @@ import { isSessionActive } from './api/session'
 import { getStorageStatus, readDb, resetDb, transaction } from './db/database'
 import { SEED_VERSION } from './db/seed'
 import { persistedDbBytes } from './db/storage'
+import { getNetworkActivity, queueDelays, resetNetwork } from './network'
+import { clearNftEventHistory, replayNftEvent, updateNft } from './nft-updates'
 import { getScenario, resetScenario, setScenario } from './scenarios'
 import {
   closeAllConnections,
   emitToAll,
   emitToUser,
   getActiveConnectionCount,
+  getRefusedConnectionCount,
+  isSocketBlocked,
   listConnections,
+  setSocketBlocked,
 } from './socket'
 
 /**
@@ -29,13 +39,13 @@ import {
 
 async function buildState(): Promise<MockState> {
   const storage = { status: await getStorageStatus(), bytes: persistedDbBytes() }
-  const socket = { connections: listConnections() }
+  const socket = { connections: listConnections(), blocked: isSocketBlocked() }
   if (storage.status === 'corrupted') {
     return {
       seedVersion: SEED_VERSION,
       scenario: getScenario(),
       storage,
-      counts: { users: 0, activeSessions: 0, nfts: 0, collections: 0, wallets: 0 },
+      counts: { users: 0, activeSessions: 0, nfts: 0, collections: 0, wallets: 0, favorites: 0 },
       users: [],
       socket,
     }
@@ -52,6 +62,7 @@ async function buildState(): Promise<MockState> {
       nfts: db.nfts.length,
       collections: db.collections.length,
       wallets: Object.values(db.walletsByUser).reduce((total, wallets) => total + wallets.length, 0),
+      favorites: Object.values(db.favoritesByUser).reduce((total, favorites) => total + favorites.length, 0),
     },
     users: db.users.map((user) => ({
       id: user.id,
@@ -81,10 +92,16 @@ export const controlHandlers = [
     return HttpResponse.json(setScenario(parsed.data))
   }),
 
-  /** Restores the seed and the default scenario, and drops every socket connection. */
+  /**
+   * Restores the seed and the default scenario, unblocks the socket server and drops
+   * every connection, queued delay, request log entry and replayable event.
+   */
   http.post('/__mock/reset', async () => {
     await resetDb()
     resetScenario()
+    resetNetwork()
+    clearNftEventHistory()
+    setSocketBlocked(false)
     closeAllConnections()
     return HttpResponse.json(await buildState())
   }),
@@ -110,7 +127,62 @@ export const controlHandlers = [
 
   http.post('/__mock/socket/disconnect', () => HttpResponse.json({ closed: closeAllConnections() })),
 
-  http.get('/__mock/socket/connections', () => HttpResponse.json({ connections: listConnections() })),
+  http.get('/__mock/socket/connections', () =>
+    HttpResponse.json({ connections: listConnections(), refusedWhileBlocked: getRefusedConnectionCount() }),
+  ),
+
+  /** While blocked the realtime server is unreachable: connections drop and retries fail. */
+  http.post('/__mock/socket/block', async ({ request }) => {
+    const parsed = socketBlockRequestSchema.safeParse(await readJson(request))
+    if (!parsed.success) return validationError(parsed.error)
+    return HttpResponse.json({ blocked: parsed.data.blocked, closed: setSocketBlocked(parsed.data.blocked) })
+  }),
+
+  http.post('/__mock/network/delays', async ({ request }) => {
+    const parsed = queueDelaysRequestSchema.safeParse(await readJson(request))
+    if (!parsed.success) return validationError(parsed.error)
+    return HttpResponse.json({ queued: queueDelays(parsed.data) })
+  }),
+
+  http.get('/__mock/network/activity', () => HttpResponse.json(getNetworkActivity())),
+
+  /** Price or stock change made on the server: persisted, then `nft.updated` to everyone. */
+  http.post('/__mock/nfts/:nftId/update', async ({ params, request }) => {
+    const parsed = updateNftRequestSchema.safeParse(await readJson(request))
+    if (!parsed.success) return validationError(parsed.error)
+    const result = await updateNft(String(params.nftId), parsed.data)
+    if (!result.ok) {
+      return result.status === 'not-found'
+        ? apiError('NOT_FOUND', result.message)
+        : apiError('VALIDATION_FAILED', result.message)
+    }
+    return HttpResponse.json({
+      eventId: result.event.eventId,
+      version: result.event.version,
+      delivered: result.delivered,
+    })
+  }),
+
+  http.post('/__mock/nfts/:nftId/replay', async ({ params, request }) => {
+    const parsed = replayNftEventRequestSchema.safeParse(await readJson(request))
+    if (!parsed.success) return validationError(parsed.error)
+    const result = replayNftEvent(String(params.nftId), parsed.data.kind)
+    if (!result.ok) return apiError('CONFLICT', result.message)
+    return HttpResponse.json({
+      eventId: result.event.eventId,
+      version: result.event.version,
+      delivered: result.delivered,
+    })
+  }),
+
+  /** Persisted favorites of any user, to verify isolation from outside the app. */
+  http.get('/__mock/users/:userId/favorites', async ({ params }) => {
+    const parsed = userIdSchema.safeParse(params.userId)
+    if (!parsed.success) return validationError(parsed.error)
+    const db = await readDb()
+    if (!db.users.some((user) => user.id === parsed.data)) return apiError('NOT_FOUND', 'Usuário inexistente.')
+    return HttpResponse.json({ nftIds: (db.favoritesByUser[parsed.data] ?? []).map((favorite) => favorite.nftId) })
+  }),
 
   /**
    * Server-side profile change, as if made from another device: the database is

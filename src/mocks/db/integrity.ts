@@ -60,5 +60,32 @@ export function findIntegrityProblems(state: DbState): string[] {
     }
   }
 
+  for (const id of [...state.highlights.slideIds, state.highlights.spotlightId]) {
+    if (!nftIds.has(id)) problems.push(`highlight of unknown nft ${id}`)
+  }
+
+  const reviewIds = new Set<string>()
+  for (const review of state.reviews) {
+    if (reviewIds.has(review.id)) problems.push(`duplicate review ${review.id}`)
+    reviewIds.add(review.id)
+    if (!nftIds.has(review.nftId)) problems.push(`review ${review.id} of unknown nft`)
+  }
+
+  for (const [nftId, recommended] of Object.entries(state.recommendations)) {
+    if (!nftIds.has(nftId)) problems.push(`recommendations of unknown nft ${nftId}`)
+    for (const id of recommended) {
+      if (!nftIds.has(id) || id === nftId) problems.push(`invalid recommendation ${id} for ${nftId}`)
+    }
+  }
+
+  for (const [userId, favorites] of Object.entries(state.favoritesByUser)) {
+    if (!userIds.has(userId)) problems.push(`favorites of unknown user ${userId}`)
+    const favoriteIds = favorites.map((favorite) => favorite.nftId)
+    if (new Set(favoriteIds).size !== favoriteIds.length) problems.push(`duplicate favorite for ${userId}`)
+    for (const id of favoriteIds) {
+      if (!nftIds.has(id)) problems.push(`favorite of unknown nft ${id} for ${userId}`)
+    }
+  }
+
   return problems
 }

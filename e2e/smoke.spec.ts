@@ -2,9 +2,12 @@ import { expect, test } from '@playwright/test'
 import { authHeading } from './support/auth'
 import { callMockControl, type MockStatus } from './support/mock-control'
 
+/** The hero headline differs between the desktop and mobile layouts (Figma). */
+const HOME_HEADING = /^Seja dono d[oa] (futuro da arte|cultura) digital$/i
+
 const publicRoutes = [
-  { path: '/', heading: 'Início' },
-  { path: '/nfts/emerald-ape-042', heading: 'Detalhes do NFT' },
+  { path: '/', heading: HOME_HEADING },
+  { path: '/nfts/emerald-ape-042', heading: 'Emerald Ape #042' },
   { path: '/cart', heading: 'Carrinho de NFTs' },
 ]
 
@@ -14,7 +17,7 @@ test.describe('smoke @smoke', () => {
   test('opens the home route', async ({ page }) => {
     await page.goto('/')
     await expect(page).toHaveTitle(/Kurio/)
-    await expect(page.getByRole('heading', { level: 1, name: 'Início' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: HOME_HEADING })).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible()
   })
 
@@ -59,7 +62,7 @@ test.describe('smoke @smoke', () => {
     await page.goto('/rota-que-nao-existe')
     await expect(page.getByRole('heading', { level: 1, name: 'Página não encontrada' })).toBeVisible()
     await page.getByRole('link', { name: 'Voltar ao início' }).click()
-    await expect(page.getByRole('heading', { level: 1, name: 'Início' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: HOME_HEADING })).toBeVisible()
   })
 
   test('MSW worker controls the page and answers the mock API', async ({ page }) => {

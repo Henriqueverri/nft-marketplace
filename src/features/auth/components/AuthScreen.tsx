@@ -1,3 +1,4 @@
+import { DEFAULT_CATALOG_SEARCH } from '@/features/catalog/search-params'
 import { HomePage } from '@/features/home/HomePage'
 import { DESKTOP_MEDIA_QUERY, useMediaQuery } from '@/shared/hooks/use-media-query'
 import type { AuthSearch } from '../redirect'
@@ -20,7 +21,7 @@ export function AuthScreen({ mode, search }: AuthScreenProps) {
   if (!isDesktop) return <AuthPage mode={mode} redirect={redirect} expired={expired} />
   return (
     <>
-      <HomePage />
+      <HomePage search={DEFAULT_CATALOG_SEARCH} />
       <AuthDialog mode={mode} redirect={redirect} expired={expired} />
     </>
   )

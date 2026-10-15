@@ -23,6 +23,15 @@ export function formatEth(wei: bigint): string {
   return fraction ? `${whole}.${fraction}` : whole.toString()
 }
 
+/**
+ * Display form of the Figma ("1.19", "0.10", "2.00"): at least two decimals, never
+ * rounded, so a price with more digits is shown in full.
+ */
+export function formatEthDisplay(amount: string): string {
+  const [whole, fraction = ''] = formatEth(parseEth(amount)).split('.')
+  return `${whole}.${fraction.padEnd(2, '0')}`
+}
+
 export function minEth(amounts: readonly string[]): string {
   if (amounts.length === 0) throw new Error('minEth needs at least one amount')
   return formatEth(amounts.map(parseEth).reduce((min, wei) => (wei < min ? wei : min)))

@@ -1,15 +1,17 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { PlaceholderPage } from '@/shared/layout/PlaceholderPage'
+import { NftDetailPage } from '@/features/catalog/components/NftDetailPage'
+import { nftDetailQueryOptions } from '@/features/catalog/queries'
 
 export const Route = createFileRoute('/nfts/$nftId')({
-  component: NftDetailPage,
+  // Starts the request on intent (hover/focus of a card) without blocking navigation:
+  // the page itself renders loading, not-found and error states.
+  loader: ({ context, params }) => {
+    void context.queryClient.prefetchQuery(nftDetailQueryOptions(params.nftId))
+  },
+  component: NftDetailRoute,
 })
 
-function NftDetailPage() {
+function NftDetailRoute() {
   const { nftId } = Route.useParams()
-  return (
-    <PlaceholderPage title="Detalhes do NFT" phase="F2">
-      <p className="text-body-14 text-text-secondary">Identificador: {nftId}</p>
-    </PlaceholderPage>
-  )
+  return <NftDetailPage nftId={nftId} />
 }

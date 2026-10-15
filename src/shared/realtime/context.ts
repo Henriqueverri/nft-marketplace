@@ -13,6 +13,13 @@ export type RealtimeConnectionState =
   | 'rejected'
   | 'unavailable'
 
+/**
+ * Queries whose data realtime events keep fresh set `meta: { reconcileOnReconnect: true }`.
+ * Events missed while the socket was down are never replayed, so after a drop the
+ * next connection refetches those queries from REST, the source of truth.
+ */
+export const RECONCILE_ON_RECONNECT_META = { reconcileOnReconnect: true } as const
+
 /** Status of the socket of the current session (reset when the session changes). */
 export interface RealtimeStatus {
   state: RealtimeConnectionState
@@ -24,6 +31,8 @@ export interface RealtimeStatus {
   eventsApplied: number
   /** Duplicates and private events addressed to another user, dropped on arrival. */
   eventsIgnored: number
+  /** Connections after a drop that refetched the realtime-backed queries from REST. */
+  reconciliations: number
 }
 
 export const initialRealtimeStatus: RealtimeStatus = {
@@ -34,6 +43,7 @@ export const initialRealtimeStatus: RealtimeStatus = {
   lastHello: null,
   eventsApplied: 0,
   eventsIgnored: 0,
+  reconciliations: 0,
 }
 
 export const RealtimeStatusContext = createContext<RealtimeStatus>(initialRealtimeStatus)

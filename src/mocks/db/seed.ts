@@ -1,8 +1,14 @@
-import type { Collection, Edition, Network, Nft } from '@/contracts/catalog'
+import type { Collection, Edition, Network, Nft, Review } from '@/contracts/catalog'
 import type { Wallet } from '@/contracts/wallets'
 import { formatEth, minEth, parseEth } from '@/lib/eth'
 import { hashPassword } from './password'
-import { DB_SCHEMA_VERSION, type CredentialRecord, type DbState, type UserRecord } from './schema'
+import {
+  DB_SCHEMA_VERSION,
+  type CredentialRecord,
+  type DbState,
+  type FavoriteRecord,
+  type UserRecord,
+} from './schema'
 
 /**
  * Deterministic seed. Bump SEED_VERSION whenever the fixtures change: a persisted
@@ -11,7 +17,7 @@ import { DB_SCHEMA_VERSION, type CredentialRecord, type DbState, type UserRecord
  * Everything is reproducible except the password salts, which are random by design
  * (they are generated when the seed is materialized, on first load and on reset).
  */
-export const SEED_VERSION = 1
+export const SEED_VERSION = 2
 
 /** Fictitious demo accounts (documented in the README). */
 export const SEED_ACCOUNTS = [
@@ -68,21 +74,44 @@ const collections: Collection[] = [
 type ImageKey = Nft['imageKey']
 
 /** The nine NFTs shown in the Figma catalog, with their names, prices and artwork. */
-const figmaNfts: { name: string; price: string; compareAt?: string; image: ImageKey; rare?: true }[] = [
-  { name: 'Emerald Ape #042', price: '1.19', image: 'monkey-headphones' },
-  { name: 'Sage Nomad #009', price: '1.69', image: 'gorilla-suit' },
-  { name: 'Neon Vessel #552', price: '1.99', compareAt: '2.29', image: 'ape-sunglasses', rare: true },
+const figmaNfts: {
+  name: string
+  price: string
+  compareAt?: string
+  image: ImageKey
+  rare?: true
+  attributes?: string[]
+  description?: string
+}[] = [
+  {
+    name: 'Emerald Ape #042',
+    price: '1.19',
+    image: 'ape-sunglasses',
+    rare: true,
+    attributes: ['Óculos', 'Esmeralda', 'Raro'],
+    description:
+      'Um colecionável digital finalizado à mão da coleção Kurio Editions, verificado na Ethereum, com arte desbloqueável e acesso para colecionadores.',
+  },
+  { name: 'Sage Nomad #009', price: '1.69', image: 'gorilla-hat' },
+  { name: 'Neon Vessel #552', price: '1.99', compareAt: '2.29', image: 'gorilla-suit', rare: true },
   { name: 'Cosmic Bloom #118', price: '1.29', image: 'gorilla-hat' },
-  { name: 'Violet Nomad #314', price: '1.39', image: 'monkey-headphones' },
+  { name: 'Violet Nomad #314', price: '1.39', image: 'gorilla-hat' },
   { name: 'Ivory Baron #088', price: '1.79', image: 'gorilla-suit' },
-  { name: 'Golden Beat #207', price: '0.99', image: 'ape-sunglasses' },
-  { name: 'Golden Frequency #071', price: '0.59', image: 'gorilla-hat' },
+  { name: 'Golden Beat #207', price: '0.99', image: 'monkey-headphones' },
+  { name: 'Golden Frequency #071', price: '0.59', image: 'monkey-headphones' },
   { name: 'Golden Signal #160', price: '0.39', image: 'monkey-headphones' },
 ]
 
 const nameAdjectives = ['Amber', 'Crimson', 'Silent', 'Lunar', 'Velvet', 'Rusty', 'Electric', 'Hidden']
 const nameNouns = ['Monk', 'Drifter', 'Pilot', 'Oracle', 'Rider', 'Keeper', 'Echo', 'Relic']
 const imageKeys: ImageKey[] = ['ape-sunglasses', 'gorilla-hat', 'monkey-headphones', 'gorilla-suit']
+const accessoryByImage: Record<ImageKey, string> = {
+  'ape-sunglasses': 'Óculos',
+  'gorilla-hat': 'Chapéu',
+  'monkey-headphones': 'Fones',
+  'gorilla-suit': 'Terno',
+}
+const tones = ['Esmeralda', 'Âmbar', 'Violeta', 'Dourado', 'Marfim', 'Neon', 'Cobre']
 const creators = ['studio.ocre', 'lia.pixels', 'marco.render', 'kurio.labs']
 const NFT_COUNT = 48
 
@@ -92,25 +121,37 @@ function slugify(name: string): string {
 
 const EDITION_PRICE_STEP_WEI = parseEth('0.35')
 
-function buildEditions(slug: string, basePrice: string, random: () => number): Edition[] {
-  const editionCount = 1 + Math.floor(random() * 3)
+/**
+ * Edition tiers of the Figma ("1/1", "1/10", "1/50", "Aberta"), from the most to the
+ * least exclusive. The open edition is the cheapest and carries the listed price.
+ */
+const editionTiers = [
+  { key: 'unique', name: '1/1', supply: 1, steps: 3 },
+  { key: 'ten', name: '1/10', supply: 10, steps: 2 },
+  { key: 'fifty', name: '1/50', supply: 50, steps: 1 },
+  { key: 'open', name: 'Aberta', supply: 500, steps: 0 },
+] as const
+
+function buildEditions(slug: string, basePrice: string, tierCount: number, random: () => number): Edition[] {
   const baseWei = parseEth(basePrice)
-  const editions: Edition[] = []
-  const names = ['Edição padrão', 'Edição de colecionador', 'Edição 1/1']
-  for (let index = 0; index < editionCount; index++) {
-    const supply = index === 2 ? 1 : 5 + Math.floor(random() * 46)
+  return editionTiers.slice(editionTiers.length - tierCount).map((tier) => {
     // Roughly one edition in six is sold out, to exercise unavailable editions.
-    const available = random() < 0.16 ? 0 : 1 + Math.floor(random() * supply)
-    editions.push({
-      id: `ed_${slug}-${index + 1}`,
-      name: names[index],
-      priceEth: formatEth(baseWei + BigInt(index) * EDITION_PRICE_STEP_WEI),
-      supply,
-      available: Math.min(available, supply),
-      maxPerOrder: index === 2 ? 1 : 2 + Math.floor(random() * 4),
-    })
-  }
-  return editions
+    const available = tier.steps > 0 && random() < 0.16 ? 0 : 1 + Math.floor(random() * tier.supply)
+    return {
+      id: `ed_${slug}-${tier.key}`,
+      name: tier.name,
+      priceEth: formatEth(baseWei + BigInt(tier.steps) * EDITION_PRICE_STEP_WEI),
+      supply: tier.supply,
+      available: Math.min(available, tier.supply),
+      maxPerOrder: tier.supply === 1 ? 1 : 2 + Math.floor(random() * 4),
+    }
+  })
+}
+
+function hexAddress(random: () => number): string {
+  let hex = ''
+  while (hex.length < 40) hex += Math.floor(random() * 16).toString(16)
+  return `0x${hex}`
 }
 
 function buildNfts(): Nft[] {
@@ -128,19 +169,30 @@ function buildNfts(): Nft[] {
     const randomCents = 20 + Math.floor(random() * 380)
     const basePrice =
       figma?.price ?? (index === 20 ? '0.1' : formatEth(BigInt(randomCents) * parseEth('0.01')))
-    // The first edition carries the reference price, so listed prices match Figma.
-    const editions = buildEditions(slug, basePrice, random)
+    // The Figma NFTs offer every tier; the others one to four of them.
+    const editions = buildEditions(slug, basePrice, figma ? 4 : 1 + Math.floor(random() * 4), random)
+    const imageKey = figma?.image ?? imageKeys[index % imageKeys.length]
+    const rarity = figma?.rare || (!figma && random() < 0.15) ? 'rare' : 'common'
 
     nfts.push({
       id: slug,
       name,
       tokenId: name.split('#')[1] ?? String(index),
-      description: `${name} faz parte de uma série de retratos digitais com edições limitadas e verificadas.`,
+      description:
+        figma?.description ?? `${name} faz parte de uma série de retratos digitais com edições limitadas e verificadas.`,
       collectionId: collections[index % collections.length].id,
       networkId: networks[index % networks.length].id,
       creatorUsername: creators[index % creators.length],
-      imageKey: figma?.image ?? imageKeys[index % imageKeys.length],
-      rarity: figma?.rare || random() < 0.15 ? 'rare' : 'common',
+      imageKey,
+      rarity,
+      attributes: figma?.attributes ?? [
+        accessoryByImage[imageKey],
+        tones[index % tones.length],
+        rarity === 'rare' ? 'Raro' : 'Comum',
+      ],
+      popularity: 20 + Math.floor(random() * 80),
+      contractAddress: hexAddress(random),
+      royaltyPercent: 5 + (index % 6),
       priceEth: minEth(editions.map((edition) => edition.priceEth)),
       compareAtPriceEth: figma?.compareAt ?? null,
       editions,
@@ -149,6 +201,71 @@ function buildNfts(): Nft[] {
     })
   }
   return nfts
+}
+
+const reviewAuthors = ['colecionador.rj', 'pixel.paula', 'nft.tiago', 'galeria.sul', 'joana.arte', 'rafa.3d']
+const reviewComments = [
+  'Arte impecável, as cores ficam ainda melhores em tela cheia.',
+  'Entrega da edição foi imediata e o certificado veio certinho.',
+  'Uma das peças mais bonitas da coleção, vale cada ETH.',
+  'Gostei do traço, mas esperava mais detalhes no fundo.',
+  'Comprei a edição aberta e já estou de olho na 1/10.',
+  'Criador muito atencioso, recomendo acompanhar os próximos drops.',
+]
+
+/**
+ * Read-only reviews. Emerald Ape #042 has the 19 reviews (average 4.8) shown in the
+ * Figma; some NFTs have none, to exercise the empty state.
+ */
+function buildReviews(nfts: Nft[]): Review[] {
+  const random = createRandom(20_261_016)
+  const reviews: Review[] = []
+  nfts.forEach((nft, index) => {
+    const count = index === 0 ? 19 : index % 5 === 4 ? 0 : 1 + Math.floor(random() * 6)
+    for (let position = 0; position < count; position++) {
+      const rating = index === 0 ? (position < 15 ? 5 : 4) : 3 + Math.floor(random() * 3)
+      reviews.push({
+        id: `rev_${nft.id}-${position + 1}`,
+        nftId: nft.id,
+        authorUsername: reviewAuthors[(index + position) % reviewAuthors.length],
+        rating,
+        comment: reviewComments[(index * 3 + position) % reviewComments.length],
+        createdAt: new Date(REFERENCE_TIME - (position + 1) * 3 * DAY_MS - index * 3_600_000).toISOString(),
+      })
+    }
+  })
+  return reviews
+}
+
+/**
+ * "Colecionadores também viram": for each NFT, NFTs of other collections seen by the
+ * same collectors. Every twelfth NFT has none, to exercise the empty state.
+ */
+function buildRecommendations(nfts: Nft[]): Record<string, string[]> {
+  const recommendations: Record<string, string[]> = {}
+  nfts.forEach((nft, index) => {
+    if (index % 12 === 11) {
+      recommendations[nft.id] = []
+      return
+    }
+    const picks: string[] = []
+    for (let step = 1; picks.length < 6 && step < nfts.length; step++) {
+      const candidate = nfts[(index + step * 5) % nfts.length]
+      if (candidate.collectionId !== nft.collectionId && !picks.includes(candidate.id)) picks.push(candidate.id)
+    }
+    recommendations[nft.id] = picks
+  })
+  return recommendations
+}
+
+function buildFavorites(): Record<string, FavoriteRecord[]> {
+  return {
+    usr_ana: [
+      { nftId: 'neon-vessel-552', addedAt: new Date(REFERENCE_TIME - 2 * DAY_MS).toISOString() },
+      { nftId: 'golden-beat-207', addedAt: new Date(REFERENCE_TIME - 5 * DAY_MS).toISOString() },
+    ],
+    usr_bruno: [{ nftId: 'ivory-baron-088', addedAt: new Date(REFERENCE_TIME - 3 * DAY_MS).toISOString() }],
+  }
 }
 
 function buildWallets(): Record<string, Wallet[]> {
@@ -206,6 +323,7 @@ function buildUsers(): UserRecord[] {
 
 /** Seed without credentials: synchronous and byte-for-byte reproducible. */
 export function buildSeedData(): Omit<DbState, 'credentials'> {
+  const nfts = buildNfts()
   return {
     schemaVersion: DB_SCHEMA_VERSION,
     seedVersion: SEED_VERSION,
@@ -214,7 +332,11 @@ export function buildSeedData(): Omit<DbState, 'credentials'> {
     walletsByUser: buildWallets(),
     networks,
     collections,
-    nfts: buildNfts(),
+    nfts,
+    highlights: { slideIds: ['emerald-ape-042', 'neon-vessel-552', 'golden-beat-207'], spotlightId: 'sage-nomad-009' },
+    reviews: buildReviews(nfts),
+    recommendations: buildRecommendations(nfts),
+    favoritesByUser: buildFavorites(),
   }
 }
 

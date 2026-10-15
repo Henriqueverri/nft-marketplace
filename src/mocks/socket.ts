@@ -13,6 +13,17 @@ import { readDb } from './db/database'
 const ENGINE_IO_PING_INTERVAL_MS = 25_000
 const ENGINE_IO_PING_PACKET = '2'
 
+/**
+ * Any frame whose first character is not an engine.io packet type (0-6, or "b" for
+ * base64) is decoded by engine.io-parser@5 as its "parser error" packet, and
+ * engine.io-client@6 handles that packet by failing the transport with "server
+ * error". socket.io-client then reports `connect_error` and retries with its backoff,
+ * as for an unreachable server.
+ */
+const ENGINE_IO_INVALID_PACKET = 'x'
+/** Fallback close, in case a client does not drop the transport on that error. */
+const REFUSED_CONNECTION_CLOSE_MS = 1_000
+
 /** engine.io MESSAGE (4) + Socket.IO CONNECT (0) / CONNECT_ERROR (4) packet prefixes. */
 const SOCKET_IO_CONNECT_PREFIX = '40'
 const SOCKET_IO_CONNECT_ERROR_PREFIX = '44'
@@ -41,6 +52,38 @@ interface ActiveConnection {
 }
 
 const activeConnections = new Map<string, ActiveConnection>()
+
+/** While blocked, every connection is dropped and new ones are refused at once. */
+let blocked = false
+/** Connection attempts refused since the server was last blocked. */
+let refusedConnections = 0
+
+export function isSocketBlocked(): boolean {
+  return blocked
+}
+
+export function setSocketBlocked(value: boolean): number {
+  blocked = value
+  if (!value) return 0
+  refusedConnections = 0
+  return closeAllConnections()
+}
+
+export function getRefusedConnectionCount(): number {
+  return refusedConnections
+}
+
+/**
+ * Fails the handshake the way an unreachable server does, through MSW's public
+ * client API only: the engine.io OPEN packet is never sent, and an invalid frame
+ * makes the client fail the attempt at once. A clean close alone would leave
+ * socket.io-client waiting for its 20 s connect timeout before retrying.
+ */
+function refuseConnection(raw: WebSocketHandlerConnection): void {
+  refusedConnections++
+  raw.client.send(ENGINE_IO_INVALID_PACKET)
+  setTimeout(() => raw.client.close(), REFUSED_CONNECTION_CLOSE_MS)
+}
 
 export function getActiveConnectionCount(): number {
   return activeConnections.size
@@ -120,7 +163,10 @@ export async function emitToUser<E extends keyof ServerToClientEvents>(
   return delivered
 }
 
-/** Delivers to every connection regardless of identity. Used only to simulate a routing bug. */
+/**
+ * Delivers to every connection regardless of identity: public events (nft.updated),
+ * and private ones only to simulate a routing bug.
+ */
 export function emitToAll<E extends keyof ServerToClientEvents>(event: E, ...args: EventArgs<E>): number {
   for (const connection of activeConnections.values()) emit(connection, event, ...args)
   return activeConnections.size
@@ -174,6 +220,7 @@ async function handleConnectPacket(connection: ActiveConnection, data: string): 
 
 export const socketHandlers = [
   realtime.addEventListener('connection', (raw) => {
+    if (blocked) return refuseConnection(raw)
     const io = toSocketIo(raw)
     const connection: ActiveConnection = { id: raw.client.id, raw, io, userId: null, sessionId: null }
     activeConnections.set(connection.id, connection)

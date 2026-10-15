@@ -76,6 +76,7 @@ export const authHandlers = [
         draft.users.push(user)
         draft.credentials.push({ userId: user.id, ...credential })
         draft.walletsByUser[user.id] = []
+        draft.favoritesByUser[user.id] = []
         draft.sessions.push({
           id: `ses_${crypto.randomUUID()}`,
           userId: user.id,
