@@ -11,8 +11,10 @@ import {
   searchCatalog,
   userFavorites,
   updateNftPrice,
+  waitForMockIdle,
   waitForRefusedReconnections,
 } from './support/catalog'
+import { addFromDetail, cartItem, expectSummaryMatchesQuote, GOLDEN_OPEN } from './support/cart'
 import { callMockControl, type MockConnections } from './support/mock-control'
 
 /** Neon Vessel is a seed favorite of Ana (src/mocks/db/seed.ts). */
@@ -20,6 +22,7 @@ const NEON = { id: 'neon-vessel-552', name: 'Neon Vessel #552' }
 
 /** REST reads that carry NFT prices: catalog, detail, carousels and favorites. */
 const PRICE_READS = /^GET \/api\/(nfts|account\/favorites)/
+const CART_READS = /^(GET \/api\/cart|POST \/api\/quotes)/
 
 /** Client-side user switch (no reload), ending on the Emerald detail page. */
 async function switchUserTo(page: Page, user: typeof ANA) {
@@ -139,6 +142,47 @@ test.describe('nft.updated over Socket.IO @realtime', () => {
 
     await callMockControl(page, '/__mock/socket/block', 'POST', { blocked: false })
     await expect(price).toHaveText('1.05 ETH', { timeout: 15_000 })
+  })
+
+  test('the cart reuses the nft.updated subscription and is reconciled after a reconnection @cart', async ({ page }, testInfo) => {
+    await addFromDetail(page, testInfo, GOLDEN_OPEN)
+    await expect(page.getByTestId('realtime-state')).toHaveText('conectado')
+    await expect(page.getByTestId('realtime-subscriptions')).toHaveText('1')
+    const item = cartItem(page, GOLDEN_OPEN)
+    const unitPrice = item.getByTestId('cart-item-unit-price')
+    await expect(unitPrice).toHaveText('0.99 ETH')
+    const before = await expectSummaryMatchesQuote(page)
+
+    await callMockControl(page, '/__mock/socket/block', 'POST', { blocked: true })
+    await expect(page.getByTestId('realtime-state')).toHaveText('desconectado')
+    const update = await updateNftPrice(page, GOLDEN_OPEN.nft.id, '1.09')
+    expect(update.delivered).toBe(0)
+    const cartReads = await requestCount(page, CART_READS)
+    await waitForRefusedReconnections(page, 2)
+    await expect(unitPrice).toHaveText('0.99 ETH')
+    expect(await requestCount(page, CART_READS)).toBe(cartReads)
+
+    await callMockControl(page, '/__mock/socket/block', 'POST', { blocked: false })
+    await expect(page.getByTestId('realtime-state')).toHaveText('conectado', { timeout: 15_000 })
+    await expect(unitPrice).toHaveText('1.09 ETH')
+    await expect(page.getByTestId('cart-notices')).toContainText(
+      `O preço de ${GOLDEN_OPEN.nft.name} (edição ${GOLDEN_OPEN.edition}) mudou de 0.99 ETH para 1.09 ETH.`,
+    )
+    const reconciled = await expectSummaryMatchesQuote(page)
+    expect(reconciled.quoteId).not.toBe(before.quoteId)
+    expect(reconciled).toMatchObject({ subtotalEth: '1.09', totalEth: '1.106' })
+
+    // A second change and then a delayed copy of the first: the cart never goes back.
+    await updateNftPrice(page, GOLDEN_OPEN.nft.id, '1.19')
+    await expect(unitPrice).toHaveText('1.19 ETH')
+    const latest = await expectSummaryMatchesQuote(page)
+    await callMockControl(page, `/__mock/nfts/${GOLDEN_OPEN.nft.id}/replay`, 'POST', { kind: 'stale' })
+    await callMockControl(page, `/__mock/nfts/${GOLDEN_OPEN.nft.id}/replay`, 'POST', { kind: 'duplicate' })
+    await expect(page.getByTestId('realtime-events-ignored')).toHaveText('1')
+    await waitForMockIdle(page)
+    await expect(unitPrice).toHaveText('1.19 ETH')
+    expect((await expectSummaryMatchesQuote(page)).totalEth).toBe(latest.totalEth)
+    await expect(page.getByTestId('realtime-subscriptions')).toHaveText('1')
   })
 
   test('after user switches there is one socket, one listener and one effect per event', async ({ page }, testInfo) => {

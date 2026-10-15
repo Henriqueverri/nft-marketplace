@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test'
 import { isMobile } from './support/auth'
-import { announcer, catalogCard, detailPrice, EMERALD } from './support/catalog'
+import { catalogCard, detailPrice, EMERALD } from './support/catalog'
 
 test.describe('NFT detail @catalog', () => {
-  test('direct access shows the NFT, its editions and an honest buy state', async ({ page }, testInfo) => {
+  test('direct access shows the NFT, its editions and buys the selection into the cart', async ({ page }, testInfo) => {
     await page.goto(`/nfts/${EMERALD.id}`)
     await expect(page.getByRole('heading', { level: 1, name: EMERALD.name })).toBeVisible()
     await expect(page).toHaveTitle(/Kurio/)
@@ -31,11 +31,14 @@ test.describe('NFT detail @catalog', () => {
       ? page.getByRole('region', { name: 'Compra' }).getByRole('button', { name: 'Comprar NFT' })
       : page.getByRole('button', { name: 'COMPRAR' })
     await buy.click()
-    const notice = 'A compra ainda não está disponível nesta demonstração. Sua seleção: 3 × edição 1/10, total de 5.67 ETH.'
-    await expect(announcer(page)).toHaveText(notice)
-    await expect(page).toHaveURL(new RegExp(`/nfts/${EMERALD.id}$`))
+    // Buying puts the selection in the cart and opens it.
+    await expect(page).toHaveURL(/\/cart$/)
+    const item = page.getByTestId('cart-item').filter({ hasText: EMERALD.name })
+    await expect(item).toContainText('Edição: 1/10')
+    await expect(item.getByTestId('cart-item-quantity')).toHaveText('3')
+    await expect(item.getByTestId('cart-item-total').filter({ visible: true })).toHaveText('5.67 ETH')
 
-    await page.reload()
+    await page.goto(`/nfts/${EMERALD.id}`)
     await expect(page.getByRole('heading', { level: 1, name: EMERALD.name })).toBeVisible()
     await expect(detailPrice(page, testInfo)).toHaveText(`${EMERALD.price} ETH`)
   })

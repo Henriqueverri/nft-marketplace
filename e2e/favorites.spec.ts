@@ -263,9 +263,13 @@ test.describe('favorites @favorites', () => {
 
   test('the list has loading, empty and error states', async ({ page }) => {
     // The profile page has no NFT cards, so the list is not cached when it opens.
+    // On desktop the login modal sits over the home, whose cards may load the list
+    // right after signing in; a reload on the profile starts from an empty cache.
     const fromProfile = '/login?redirect=%2Faccount%2Fprofile'
     await login(page, BRUNO, fromProfile)
     await expect(page).toHaveURL(/\/account\/profile$/)
+    await page.reload()
+    await expect(page.getByTestId('session-user')).toHaveText(`@${BRUNO.username}`)
     await setScenario(page, { latencyMs: 1500, failure: 'none' })
     await openFavorites(page)
     await expect(page.getByTestId('favorites-status')).toHaveText('Carregando sua lista…')
@@ -282,6 +286,8 @@ test.describe('favorites @favorites', () => {
     await logout(page)
     await login(page, BRUNO, fromProfile)
     await expect(page).toHaveURL(/\/account\/profile$/)
+    await page.reload()
+    await expect(page.getByTestId('session-user')).toHaveText(`@${BRUNO.username}`)
     await setScenario(page, { latencyMs: 100, failure: 'unavailable' })
     await openFavorites(page)
     const alert = page.getByRole('alert').filter({ hasText: 'Não foi possível carregar sua lista de interesse.' })

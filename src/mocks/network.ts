@@ -9,6 +9,7 @@ interface QueuedDelay {
   method: string | undefined
   delayMs: number
   failure: FailureMode | undefined
+  phase: 'request' | 'response'
 }
 
 let queuedDelays: QueuedDelay[] = []
@@ -20,8 +21,8 @@ let handledRequests: Record<string, number> = {}
  * `pathPrefix` and `method`, consumed in arrival order. Lets tests deliver an older
  * response after a newer one, or fail one request while others succeed.
  */
-export function queueDelays({ pathPrefix, method, delaysMs, failure }: QueueDelaysRequest): number {
-  queuedDelays.push(...delaysMs.map((delayMs) => ({ pathPrefix, method, delayMs, failure })))
+export function queueDelays({ pathPrefix, method, delaysMs, failure, phase = 'request' }: QueueDelaysRequest): number {
+  queuedDelays.push(...delaysMs.map((delayMs) => ({ pathPrefix, method, delayMs, failure, phase })))
   return queuedDelays.length
 }
 
@@ -72,14 +73,17 @@ export function withNetwork<Params extends PathParams>(
     try {
       const { latencyMs, failure } = getScenario()
       const queued = takeQueuedDelay(info.request)
-      const totalDelay = latencyMs + (queued?.delayMs ?? 0)
+      const heldAnswerMs = queued?.phase === 'response' ? queued.delayMs : 0
+      const totalDelay = latencyMs + (queued?.delayMs ?? 0) - heldAnswerMs
       if (totalDelay > 0) await delay(totalDelay)
 
       const failed = failWith(queued?.failure ?? failure)
       if (failed) return failed
 
       try {
-        return await resolver(info)
+        const response = await resolver(info)
+        if (heldAnswerMs > 0) await delay(heldAnswerMs)
+        return response
       } catch (error) {
         if (error instanceof StorageFullError) {
           return apiError(

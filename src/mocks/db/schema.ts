@@ -1,6 +1,7 @@
 import { z } from 'zod'
+import { cartItemIdSchema, cartNoticeSchema, guestCartIdSchema, quantitySchema } from '@/contracts/cart'
 import { collectionSchema, networkSchema, nftIdSchema, nftSchema, reviewSchema } from '@/contracts/catalog'
-import { isoDateTimeSchema, userIdSchema } from '@/contracts/common'
+import { ethAmountSchema, isoDateTimeSchema, userIdSchema } from '@/contracts/common'
 import { walletSchema } from '@/contracts/wallets'
 import { PASSWORD_KDF } from './password'
 
@@ -10,7 +11,7 @@ import { PASSWORD_KDF } from './password'
  * Private data (credentials, sessions, wallets, favorites) is keyed by user id.
  */
 
-export const DB_SCHEMA_VERSION = 2
+export const DB_SCHEMA_VERSION = 3
 
 const userRecordSchema = z.object({
   id: userIdSchema,
@@ -48,6 +49,32 @@ export type SessionRecord = z.infer<typeof sessionRecordSchema>
 const favoriteRecordSchema = z.object({ nftId: nftIdSchema, addedAt: isoDateTimeSchema })
 export type FavoriteRecord = z.infer<typeof favoriteRecordSchema>
 
+const cartLineRecordSchema = z.object({
+  nftId: nftIdSchema,
+  editionId: cartItemIdSchema,
+  quantity: quantitySchema,
+  /** Price the user was last shown; a different catalog price produces a notice. */
+  unitPriceEth: ethAmountSchema,
+  addedAt: isoDateTimeSchema,
+})
+export type CartLineRecord = z.infer<typeof cartLineRecordSchema>
+
+const cartRecordSchema = z.object({
+  revision: z.number().int().nonnegative(),
+  lines: z.array(cartLineRecordSchema),
+  couponCode: z.string().nullable(),
+  notices: z.array(cartNoticeSchema),
+  updatedAt: isoDateTimeSchema,
+})
+export type CartRecord = z.infer<typeof cartRecordSchema>
+
+const couponRecordSchema = z.object({
+  code: z.string(),
+  percentOff: z.number().int().min(1).max(100),
+  expiresAt: isoDateTimeSchema,
+})
+export type CouponRecord = z.infer<typeof couponRecordSchema>
+
 export const dbStateSchema = z.object({
   schemaVersion: z.literal(DB_SCHEMA_VERSION),
   seedVersion: z.number().int(),
@@ -64,5 +91,15 @@ export const dbStateSchema = z.object({
   /** "Colecionadores também viram", by NFT id. */
   recommendations: z.record(nftIdSchema, z.array(nftIdSchema)),
   favoritesByUser: z.record(userIdSchema, z.array(favoriteRecordSchema)),
+  /** Account carts by user id. */
+  cartsByUser: z.record(userIdSchema, cartRecordSchema),
+  /** Visitor carts by the X-Cart-Id the client generated. */
+  guestCarts: z.record(guestCartIdSchema, cartRecordSchema),
+  /**
+   * Visitor cart ids already merged into an account, with the merge time. A visitor
+   * write that arrives after the merge is refused instead of recreating the cart.
+   */
+  mergedGuestCarts: z.record(guestCartIdSchema, isoDateTimeSchema),
+  coupons: z.array(couponRecordSchema),
 })
 export type DbState = z.infer<typeof dbStateSchema>

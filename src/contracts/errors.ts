@@ -14,6 +14,16 @@ export const API_ERROR_STATUS = {
   EMAIL_TAKEN: 409,
   USERNAME_TAKEN: 409,
   CONFLICT: 409,
+  /** Cart: the quantity would exceed min(maxPerOrder, available) of the edition. */
+  QUANTITY_LIMIT_EXCEEDED: 409,
+  /** Cart: the edition has no stock left. */
+  OUT_OF_STOCK: 409,
+  /** Quote: the cart changed since the revision the client asked to quote. */
+  CART_CHANGED: 409,
+  /** Cart: a visitor write to a cart id that was already merged into an account. */
+  CART_MERGED: 409,
+  COUPON_INVALID: 422,
+  COUPON_EXPIRED: 422,
   STORAGE_FULL: 507,
   STORAGE_CORRUPTED: 500,
   INTERNAL_ERROR: 500,

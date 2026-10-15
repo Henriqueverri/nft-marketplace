@@ -39,6 +39,8 @@ const assets = [
   { node: '11:1245', format: 'svg', out: 'src/assets/icons/share-linkedin.svg' },
   { node: '11:1248', format: 'svg', out: 'src/assets/icons/share-message.svg' },
   { node: '11:1247', format: 'svg', out: 'src/assets/icons/share-twitter.svg' },
+  // Cart (Desktop / Carrinho)
+  { node: '11:2029', format: 'svg', out: 'src/assets/icons/delete.svg' },
   // Mobile frames (Início and Detalhes do NFT)
   { node: '15:5488', format: 'svg', out: 'src/assets/icons/filter.svg' },
   { node: '15:5519', format: 'svg', out: 'src/assets/icons/tab-home.svg' },

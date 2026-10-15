@@ -1,8 +1,9 @@
-import { Link, useRouter } from '@tanstack/react-router'
+import { Link, useNavigate, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Edition, NftDetail } from '@/contracts/catalog'
+import { useAddToCart } from '@/features/cart/queries'
 import { FavoriteButton } from '@/features/favorites/FavoriteButton'
 import { formatEthDisplay } from '@/lib/eth'
 import { cn } from '@/lib/utils'
@@ -13,7 +14,7 @@ import { Icon } from '@/shared/ui/Icon'
 import { useNftDetail, useRecommendedNfts, useRelatedNfts, useReviews } from '../queries'
 import { NftCarousel } from './NftCarousel'
 import { NftGallery } from './NftGallery'
-import { defaultEdition, maxQuantity, totalPrice } from '../editions'
+import { defaultEdition, maxQuantity } from '../editions'
 import { EditionPicker, QuantityStepper } from './NftPurchase'
 
 /** NFT detail (Figma "Desktop / Detalhes do NFT" and "Mobile / Detalhes do NFT"). */
@@ -45,24 +46,49 @@ function NftDetailContent({ nft }: { nft: NftDetail }) {
   const [editionId, setEditionId] = useState<string | null>(null)
   const [quantity, setQuantity] = useState(1)
   const [tab, setTab] = useState('details')
-  const [buyNotice, setBuyNotice] = useState<string | null>(null)
   const announce = useAnnounce()
+  const navigate = useNavigate()
+  const addToCart = useAddToCart()
 
   const edition: Edition = nft.editions.find((candidate) => candidate.id === editionId) ?? defaultEdition(nft)
   const max = maxQuantity(edition)
   const effectiveQuantity = Math.min(Math.max(quantity, 1), Math.max(max, 1))
   const soldOut = edition.available === 0
+  const addError =
+    addToCart.error && !(addToCart.error instanceof ApiError && addToCart.error.code === 'SESSION_CHANGED')
+      ? addToCart.error
+      : null
 
   function selectEdition(next: Edition) {
     setEditionId(next.id)
-    setBuyNotice(null)
+    addToCart.reset()
   }
 
-  function handleBuy() {
-    // F2 stops at the selection: checkout and payment arrive with the cart (F3).
-    const message = `A compra ainda não está disponível nesta demonstração. Sua seleção: ${effectiveQuantity} × edição ${edition.name}, total de ${totalPrice(edition, effectiveQuantity)} ETH.`
-    setBuyNotice(message)
-    announce(message)
+  function changeQuantity(next: number) {
+    setQuantity(next)
+    addToCart.reset()
+  }
+
+  /** "Comprar" adds the selection and opens the cart; the cart button only adds. */
+  function handleAdd(openCart: boolean) {
+    addToCart.mutate(
+      { nftId: nft.id, editionId: edition.id, quantity: effectiveQuantity },
+      {
+        onSuccess: () => {
+          if (openCart) {
+            void navigate({ to: '/cart' })
+            return
+          }
+          announce(`${effectiveQuantity} × ${nft.name} (edição ${edition.name}) adicionado ao carrinho.`)
+        },
+        // Also announced: on mobile the inline message may be behind the buy bar.
+        onError: (error) => {
+          if (!(error instanceof ApiError && error.code === 'SESSION_CHANGED')) {
+            announce(`Não foi possível adicionar ao carrinho. ${errorMessage(error)}`)
+          }
+        },
+      },
+    )
   }
 
   function showReviews() {
@@ -134,17 +160,22 @@ function NftDetailContent({ nft }: { nft: NftDetail }) {
             <EditionPicker nft={nft} selected={edition} onSelect={selectEdition} />
 
             <div className="hidden flex-wrap items-center gap-x-8 gap-y-4 md:flex">
-              <QuantityStepper value={effectiveQuantity} max={max} onChange={setQuantity} />
+              <QuantityStepper value={effectiveQuantity} max={max} onChange={changeQuantity} />
               <div className="flex flex-wrap gap-3">
-                <BuyButton soldOut={soldOut} onBuy={handleBuy} className="h-10 w-[130px] rounded-[6px] text-body-14">
+                <BuyButton
+                  soldOut={soldOut}
+                  pending={addToCart.isPending}
+                  onBuy={() => handleAdd(true)}
+                  className="h-10 w-[130px] rounded-[6px] text-body-14"
+                >
                   COMPRAR
                 </BuyButton>
                 <FavoriteButton nft={nft} variant="labeled" className="w-[130px]" />
               </div>
             </div>
-            {buyNotice ? (
-              <p role="status" className="rounded-[6px] border border-brand/40 bg-surface-raised p-3 text-body-14 text-cream">
-                {buyNotice}
+            {addError ? (
+              <p data-testid="add-to-cart-error" className="rounded-[6px] border border-coral/60 p-3 text-body-14 text-cream">
+                Não foi possível adicionar ao carrinho. {errorMessage(addError)}
               </p>
             ) : soldOut ? (
               <p className="text-body-14 text-coral">Esta edição está esgotada. Escolha outra edição.</p>
@@ -177,8 +208,10 @@ function NftDetailContent({ nft }: { nft: NftDetail }) {
         quantity={effectiveQuantity}
         max={max}
         soldOut={soldOut}
-        onQuantityChange={setQuantity}
-        onBuy={handleBuy}
+        pending={addToCart.isPending}
+        onQuantityChange={changeQuantity}
+        onBuy={() => handleAdd(true)}
+        onAdd={() => handleAdd(false)}
       />
     </article>
   )
@@ -186,11 +219,13 @@ function NftDetailContent({ nft }: { nft: NftDetail }) {
 
 function BuyButton({
   soldOut,
+  pending,
   onBuy,
   className,
   children,
 }: {
   soldOut: boolean
+  pending: boolean
   onBuy: () => void
   className: string
   children: React.ReactNode
@@ -198,7 +233,8 @@ function BuyButton({
   return (
     <button
       type="button"
-      disabled={soldOut}
+      disabled={soldOut || pending}
+      aria-busy={pending || undefined}
       onClick={onBuy}
       className={cn(
         'flex items-center justify-center bg-brand font-bold text-ink outline-none hover:bg-brand-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-ink disabled:opacity-50',
@@ -394,15 +430,19 @@ function MobileBuyBar({
   quantity,
   max,
   soldOut,
+  pending,
   onQuantityChange,
   onBuy,
+  onAdd,
 }: {
   edition: Edition
   quantity: number
   max: number
   soldOut: boolean
+  pending: boolean
   onQuantityChange: (value: number) => void
   onBuy: () => void
+  onAdd: () => void
 }) {
   return (
     <div
@@ -424,6 +464,7 @@ function MobileBuyBar({
       <div className="flex items-center gap-3">
         <BuyButton
           soldOut={soldOut}
+          pending={pending}
           onBuy={onBuy}
           className="h-[60px] flex-1 rounded-[40px] bg-linear-to-r from-brand to-brand-accent text-body-16"
         >
@@ -431,8 +472,8 @@ function MobileBuyBar({
         </BuyButton>
         <button
           type="button"
-          onClick={onBuy}
-          disabled={soldOut}
+          onClick={onAdd}
+          disabled={soldOut || pending}
           aria-label="Adicionar ao carrinho"
           className="flex size-[60px] items-center justify-center rounded-full border border-border-field bg-surface-raised text-brand-accent outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
         >

@@ -4,6 +4,7 @@ import arrowRight from '@/assets/icons/arrow-right.svg'
 import cart from '@/assets/icons/cart.svg'
 import chevronRight from '@/assets/icons/chevron-right.svg'
 import close from '@/assets/icons/close.svg'
+import deleteIcon from '@/assets/icons/delete.svg'
 import filter from '@/assets/icons/filter.svg'
 import heartSolid from '@/assets/icons/heart-solid.svg'
 import heart from '@/assets/icons/heart.svg'
@@ -36,6 +37,7 @@ const icons = {
   cart,
   'chevron-right': chevronRight,
   close,
+  delete: deleteIcon,
   filter,
   heart,
   'heart-solid': heartSolid,

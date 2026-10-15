@@ -87,5 +87,25 @@ export function findIntegrityProblems(state: DbState): string[] {
     }
   }
 
+  const editionOwners = new Map(state.nfts.flatMap((nft) => nft.editions.map((edition) => [edition.id, nft.id])))
+  const checkCart = (label: string, cart: DbState['guestCarts'][string]) => {
+    const lineIds = cart.lines.map((line) => line.editionId)
+    if (new Set(lineIds).size !== lineIds.length) problems.push(`duplicate cart line in ${label}`)
+    for (const line of cart.lines) {
+      if (editionOwners.get(line.editionId) !== line.nftId) problems.push(`cart ${label} has unknown edition ${line.editionId}`)
+    }
+  }
+  for (const [userId, cart] of Object.entries(state.cartsByUser)) {
+    if (!userIds.has(userId)) problems.push(`cart of unknown user ${userId}`)
+    checkCart(userId, cart)
+  }
+  for (const [cartId, cart] of Object.entries(state.guestCarts)) {
+    checkCart(cartId, cart)
+    if (cartId in state.mergedGuestCarts) problems.push(`visitor cart ${cartId} exists after being merged`)
+  }
+
+  const couponCodes = state.coupons.map((coupon) => coupon.code)
+  if (new Set(couponCodes).size !== couponCodes.length) problems.push('duplicate coupon code')
+
   return problems
 }

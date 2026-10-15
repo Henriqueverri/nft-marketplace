@@ -3,6 +3,7 @@ import { MobileTabBar } from '@/app/layout/MobileTabBar'
 import { MobileTopBar, SiteHeader } from '@/app/layout/SiteHeader'
 import { SiteFooter } from '@/app/layout/SiteFooter'
 import type { RouterContext } from '@/app/router'
+import { useCartNoticesAnnouncer } from '@/features/cart/components/CartNoticesAnnouncer'
 import { useNftRealtimeSync } from '@/features/catalog/realtime-sync'
 import { DemoPanel } from '@/features/demo/DemoPanel'
 import { cn } from '@/lib/utils'
@@ -21,6 +22,7 @@ function RootLayout() {
   const isDesktop = useMediaQuery(DESKTOP_MEDIA_QUERY)
   const pathname = useLocation({ select: (location) => location.pathname })
   useNftRealtimeSync()
+  useCartNoticesAnnouncer()
 
   // On mobile the auth screens are standalone pages with their own logo (Figma), and
   // the NFT detail replaces the tab bar with its buy bar.

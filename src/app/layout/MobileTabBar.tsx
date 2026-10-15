@@ -1,4 +1,6 @@
 import { Link, useLocation } from '@tanstack/react-router'
+import { cartLinkLabel, useCartCount } from '@/features/cart/cart-count'
+import { CartCountBadge } from '@/features/cart/components/CartBadge'
 import { cn } from '@/lib/utils'
 import { useAnnounce } from '@/shared/feedback/announcer-context'
 import { Icon, type IconName } from '@/shared/ui/Icon'
@@ -16,14 +18,16 @@ const focusRing = 'outline-none focus-visible:ring-2 focus-visible:ring-ring'
 export function MobileTabBar() {
   const pathname = useLocation({ select: (location) => location.pathname })
   const announce = useAnnounce()
+  const cartCount = useCartCount()
 
   const renderTab = (tab: (typeof tabs)[number]) => {
     const active = pathname === tab.to
+    const isCart = tab.to === '/cart'
     return (
       <li key={tab.to} className="flex flex-1 justify-center">
         <Link
           to={tab.to}
-          aria-label={tab.label}
+          aria-label={isCart ? cartLinkLabel(cartCount) : tab.label}
           aria-current={active ? 'page' : undefined}
           className={cn(
             'flex size-11 items-center justify-center rounded-full',
@@ -31,7 +35,10 @@ export function MobileTabBar() {
             active ? 'text-brand-accent' : 'text-text-secondary hover:text-cream',
           )}
         >
-          <Icon name={tab.icon} className="size-5" />
+          <span className="relative">
+            <Icon name={tab.icon} className="size-5" />
+            {isCart ? <CartCountBadge count={cartCount} /> : null}
+          </span>
         </Link>
       </li>
     )

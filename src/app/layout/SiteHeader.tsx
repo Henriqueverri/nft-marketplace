@@ -1,5 +1,7 @@
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import { useLogout, useSession } from '@/features/auth/queries'
+import { cartLinkLabel, useCartCount } from '@/features/cart/cart-count'
+import { CartCountBadge } from '@/features/cart/components/CartBadge'
 import { focusCatalogSearch } from '@/features/catalog/use-catalog-navigation'
 import { cn } from '@/lib/utils'
 import { useAnnounce } from '@/shared/feedback/announcer-context'
@@ -42,6 +44,7 @@ export function SiteHeader() {
   const announce = useAnnounce()
   const logout = useLogoutAndLeave()
   const loginSearch = useLoginSearch()
+  const cartCount = useCartCount()
 
   async function openSearch() {
     if (focusCatalogSearch()) return
@@ -71,7 +74,7 @@ export function SiteHeader() {
             </Link>
           </li>
           <li>
-            <Link to="/" hash="catalogo" className={itemClass(pathname.startsWith('/nfts/'))}>
+            <Link to="/" hash="catalogo" className={itemClass(pathname.startsWith('/nfts/') || pathname === '/cart')}>
               Mercado
             </Link>
           </li>
@@ -97,10 +100,13 @@ export function SiteHeader() {
           </button>
           <Link
             to="/cart"
-            aria-label="Carrinho"
+            aria-label={cartLinkLabel(cartCount)}
             className={cn('flex size-8 items-center justify-center rounded-full text-cream hover:text-brand-accent', focusRing)}
           >
-            <Icon name="cart" className="size-6" />
+            <span className="relative">
+              <Icon name="cart" className="size-6" />
+              <CartCountBadge count={cartCount} />
+            </span>
           </Link>
           {user ? (
             <div className="flex items-center gap-3">

@@ -2,7 +2,7 @@
 
 Implementação do desafio frontend da Jungle Gaming (enunciado em [`docs/challenge.md`](docs/challenge.md)), com React, TypeScript, TanStack Router, TanStack Query, Axios, Socket.IO, Tailwind CSS, shadcn/ui, MSW e Playwright.
 
-> **Status: Fase F2 (catálogo, detalhes e favoritos), aguardando revisão.** Home com destaques e catálogo (busca, filtros combinados, ordenação e paginação com estado na URL), detalhe do NFT, lista de interesse por usuário e preços em tempo real (`nft.updated`), sobre a autenticação e o banco simulado da F1. Carrinho, checkout, pedidos, perfil completo e carteiras ainda são provisórios. Decisões e limitações estão em [`ARCHITECTURE.md`](ARCHITECTURE.md).
+> **Status: Fase F3 (carrinho e cotação), aguardando revisão.** Carrinho no servidor simulado (visitante por `X-Cart-Id`, junção ao entrar), cupons, resumo vindo de `POST /quotes` com ETH exato e ajustes de preço e estoque em tempo real, sobre o catálogo, o detalhe e os favoritos da F2 e a autenticação da F1. Checkout, pedidos, perfil completo e carteiras ainda são provisórios. Decisões e limitações estão em [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Requisitos
 
@@ -93,9 +93,16 @@ Disponível só com `VITE_ENABLE_MOCKS=true`. O painel e os testes usam estas ro
 - `POST /__mock/nfts/:nftId/update`: muda preço (`{ "priceEth": "0.99" }`) ou estoque de um NFT e emite `nft.updated`.
 - `POST /__mock/nfts/:nftId/replay`: reenvia o último evento (`{ "kind": "duplicate" }`) ou um antigo (`"stale"`).
 - `POST /__mock/socket/block`: `{ "blocked": true }` deixa o servidor de tempo real inalcançável; `false` libera.
-- `POST /__mock/network/delays`: atrasos de uso único por prefixo de rota (e método), opcionalmente com falha, para respostas fora de ordem e mudanças concorrentes.
+- `POST /__mock/network/delays`: atrasos de uso único por prefixo de rota (e método), opcionalmente com falha, para respostas fora de ordem e mudanças concorrentes. Com `"phase": "response"`, o mock processa a requisição e só retém a resposta.
 - `GET /__mock/network/activity`: requisições em andamento e contagem por rota, para os testes esperarem sem pausas fixas.
 - `GET /__mock/users/:userId/favorites`: favoritos gravados de um usuário.
+- `GET /__mock/carts`: carrinhos gravados (contas e visitantes) e ids de visitante já juntados.
+- `GET /__mock/quotes/:quoteId`: uma cotação exatamente como `POST /api/quotes` a respondeu.
+
+### Carrinho e cupons
+
+- Cupons de demonstração: `KURIO10` (10% de desconto) e `EXPIRED` (vencido); qualquer outro código é recusado.
+- Para ver o ajuste em tempo real, abra o carrinho com itens e mude o preço ou o estoque pela API de controle, por exemplo `POST /__mock/nfts/velvet-oracle-240/update` com `{ "available": { "ed_velvet-oracle-240-open": 0 } }`.
 
 Exemplo, no console do navegador com a aplicação aberta:
 
@@ -124,7 +131,7 @@ src/
   app/          bootstrap: env, QueryClient, router
   contracts/    schemas zod compartilhados por app, mocks e testes
   routes/       rotas do TanStack Router (file-based); privadas em _authenticated/
-  features/     auth, account, catalog, favorites, demo (painel), home
+  features/     auth, account, catalog, favorites, cart, demo (painel), home
   shared/       api (Axios), session, realtime (Socket.IO), forms, feedback, layout, ui
   lib/          utilitários puros (cn, ETH)
   components/   componentes shadcn/ui

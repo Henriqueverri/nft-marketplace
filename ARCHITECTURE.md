@@ -110,6 +110,7 @@ Três ajustes foram necessários. Todos foram descobertos e confirmados empirica
 - **Arquivos (F1):** `smoke` (rotas públicas, guard das privadas, MSW e socket anônimo), `realtime-poc` (F0), `auth` (cadastro, login, logout, expiração, retorno à rota, open redirect, proteção de rotas), `isolation` (troca A→B sem refresh, vazamento em storage, resposta atrasada, socket e eventos), `mocks` (reset, persistência, senha ausente, falhas de API e de storage).
 - **Arquivos (F2):** `catalog` (busca, filtros combinados, ordenação, paginação, URL com voltar/avançar/refresh, parâmetros inválidos, respostas fora de ordem), `nft-detail` (acesso direto, NFT inexistente, edições e quantidade, abas por teclado, carrosséis), `favorites` (favoritar e desfazer, visitante, rollback, mudanças concorrentes com uma falha atrasada, NFT travado enquanto a mudança está pendente, troca de usuário com mudança pendente, isolamento A/B, API sem sessão, estados da lista), `loading-states` (skeleton, vazio, erro e nova tentativa), `realtime-nft` (`nft.updated`, duplicado e antigo, socket bloqueado e reconciliação, três trocas de usuário seguidas) e `responsive-a11y` (larguras, axe, teclado, movimento reduzido).
 - **Esperas sem tempo fixo (F2):** o Playwright não enxerga requisições respondidas pelo service worker do MSW (`waitForResponse` não dispara). Em vez de pausas, o mock expõe `GET /__mock/network/activity` (requisições `/api/*` em andamento e contagem por `MÉTODO /caminho?query`) e `refusedWhileBlocked` em `GET /__mock/socket/connections`. Os testes esperam "o mock respondeu tudo", "o servidor bloqueado recusou N reconexões" ou "nenhuma leitura REST de preço foi feita", com `expect.poll` e timeout explícito. A única pausa fixa que resta é a da F0 (`realtime-poc`, 65 s), que mede justamente a estabilidade da conexão ao longo do tempo.
+- **Arquivos (F3):** `cart` (adicionar, quantidade e limites, remoção até o vazio, KURIO10, cupom inexistente e expirado, remoção do cupom, refresh, junção no login, ajustes na junção, precisão 0.1 × 3, tela igual à resposta de `POST /quotes`, carregamento/erro/nova tentativa, badge, e com o carrinho aberto: mudança de preço e fim do estoque por `nft.updated`). `realtime-nft` ganhou o caso do carrinho com socket bloqueado, reconciliação na reconexão, evento duplicado e evento antigo. `nft-detail` passou a verificar que "Comprar" põe a seleção no carrinho.
 - Cada teste roda num contexto de navegador novo: `localStorage` próprio, portanto banco simulado próprio. Não há estado compartilhado entre testes.
 - **CI** (`.github/workflows/ci.yml`): Node 24, `npm ci`, `npm run verify`, Chromium do Playwright com dependências do sistema e `npx playwright test` com a suíte completa, sem filtro de tags. O relatório HTML e os traces sobem como artefato, mesmo quando os testes falham (`if: !cancelled()`). O workflow não usa secrets.
 
@@ -136,6 +137,10 @@ Cada item segue o formato: problema, escolha, alternativa descartada e motivo.
 - **D17, reconciliação ao reconectar (F2):** **escolha:** depois de uma queda, refazer as queries públicas marcadas com `meta.reconcileOnReconnect`. **Descartado:** polling periódico, que traria o preço "por outro caminho" mesmo com o socket ativo e esconderia falhas do tempo real.
 - **D18, recusa de conexão do socket bloqueado (F2, revisão):** **problema:** só fechar o WebSocket deixava o `socket.io-client` esperando o timeout de 20 s; a primeira solução disparava `error` no WebSocket da página por `raw.client.socket`, uma propriedade que existe na classe do `@mswjs/interceptors` 0.39 (MSW 2.15), mas não no tipo público do MSW. **Escolha:** responder com um frame que não é pacote engine.io válido (`x`), pela API pública `client.send`. O `engine.io-parser` 5 o decodifica como pacote de erro, e o `engine.io-client` 6 falha a tentativa na hora; o `socket.io-client` emite `connect_error` e tenta de novo com backoff, como diante de um servidor inalcançável. **Descartado:** a propriedade interna do MSW, que pode sumir numa atualização sem erro de tipo; e responder `CONNECT_ERROR` do Socket.IO, que o cliente trata como recusa definitiva e não reconecta. A dependência restante é o protocolo engine.io (estável desde a v4) e está isolada em `refuseConnection` (`src/mocks/socket.ts`).
 - **D19, uma mudança de favorito por NFT (F2, revisão):** **problema:** o botão bloqueava só a si mesmo (`isPending` da própria instância); ao abrir o detalhe com a requisição do card em voo, um segundo clique começava outra mudança do mesmo NFT, e o rollback atrasado da primeira podia desfazer a segunda. **Escolha:** todo botão do NFT fica `aria-disabled` enquanto houver mutation pendente para ele (`useIsMutating` filtrado pelo NFT e pelo usuário), e o rollback só acontece se a mutation que falhou ainda é a mais recente daquele NFT. **Descartado:** uma fila de mutations por NFT (`scope`), que esconderia do usuário que a mudança anterior ainda está pendente.
+- **D20, carrinho do visitante no servidor (F3):** **problema:** o visitante precisa de carrinho persistente sem conta, e a junção no login precisa de uma fonte de verdade. **Escolha:** o carrinho vive no servidor simulado, identificado por um id aleatório (`gc_<uuid>`) que o navegador envia em `X-Cart-Id`; o id só é criado na primeira adição. **Descartado:** carrinho só no `localStorage`, que deixaria preço, estoque e cupom sob controle do cliente e faria da junção uma cópia sem validação.
+- **D21, revisão do carrinho e cotação por revisão (F3):** **problema:** um total calculado para itens que já mudaram não pode aparecer como atual. **Escolha:** toda mudança do carrinho incrementa `revision`; `POST /quotes` recebe `{ cartRevision }` e responde 409 `CART_CHANGED` se o carrinho do servidor estiver em outra revisão; no cliente a cotação é uma query por revisão, sem dados anteriores como placeholder. **Descartado:** calcular o total no cliente (duplicaria a regra de dinheiro) ou mostrar a cotação anterior enquanto a nova carrega (mostraria um valor velho como se fosse o atual).
+- **D22, reconciliação no servidor (F3):** **problema:** preço e estoque mudam com o carrinho guardado. **Escolha:** toda leitura ou escrita do carrinho, a cotação e a junção reconciliam com o catálogo (remove esgotado, reduz quantidade, atualiza preço, retira cupom vencido) e gravam um aviso para cada ajuste. **Descartado:** ajustar no cliente ao receber `nft.updated`, que só funcionaria com a aba aberta e conectada.
+- **D23, junção idempotente (F3):** **escolha:** `POST /api/cart/merge` soma as quantidades da mesma edição, limita ao máximo atual e apaga o carrinho do visitante na mesma transação; o cliente só esquece o id depois da resposta. Repetir a chamada (nova tentativa, refresh, outra aba) não soma nada outra vez. O id juntado fica registrado (`mergedGuestCarts`, os 200 mais recentes); uma escrita de visitante que chegue depois com esse id recebe 409 `CART_MERGED` em vez de recriar um carrinho órfão. No cliente a junção é uma promessa única por conta e id (`mergePendingGuestCart`), fora do ciclo de vida da query: um `cancelQueries` rejeita a leitura, mas não a junção, e a próxima leitura reaproveita a mesma promessa. Antes de juntar, o cliente espera as escritas de visitante em voo; essas escritas não são abortadas pela troca de sessão (`keepOnSessionChange`) e a resposta tardia vira `SESSION_CHANGED`, sem tocar no cache. Mudanças do carrinho da conta esperam a junção pendente. **Descartado:** juntar no cliente com várias chamadas de adição, que duplicaria itens se uma resposta se perdesse; tirar o `cancelQueries` das mudanças, que deixaria leituras velhas sobrescreverem a resposta.
 
 ## 9. Resultados da F0
 
@@ -169,6 +174,8 @@ Os schemas ficam em `src/contracts`, um arquivo por domínio: `common` (ids, dat
 | `FORBIDDEN` | 403 |
 | `NOT_FOUND` | 404 |
 | `EMAIL_TAKEN`, `USERNAME_TAKEN`, `CONFLICT` | 409 |
+| `QUANTITY_LIMIT_EXCEEDED`, `OUT_OF_STOCK`, `CART_CHANGED` (F3) | 409 |
+| `COUPON_INVALID`, `COUPON_EXPIRED` (F3) | 422 |
 | `STORAGE_CORRUPTED`, `INTERNAL_ERROR` | 500 |
 | `SERVICE_UNAVAILABLE` | 503 |
 | `STORAGE_FULL` | 507 |
@@ -276,6 +283,8 @@ Ele usa só a API de controle, via `mockControlHttp`; nunca toca o banco. A API 
 | `POST /__mock/nfts/:nftId/update` | `{ priceEth?, available? }`: muda preço ou estoque no banco e emite `nft.updated` para todos (F2) |
 | `POST /__mock/nfts/:nftId/replay` | `{ kind: duplicate \| stale }`: reenvia o último evento (mesmo `eventId`) ou o anterior com `eventId` novo (F2) |
 | `GET /__mock/users/:userId/favorites` | ids favoritados de um usuário, para conferir isolamento de fora do app (F2) |
+| `GET /__mock/carts` | todos os carrinhos persistidos (contas e visitantes): revisão, cupom, linhas e tipos de aviso, para conferir o servidor de fora do app (F3) |
+| `GET /__mock/quotes/:quoteId` | a cotação exatamente como `POST /api/quotes` a respondeu (as 50 últimas ficam em memória), para comparar a tela com a resposta real (F3) |
 
 O cenário de rede vale só para `/api/*`; a API de controle nunca sofre atraso nem falha. `offline` responde com erro de rede (`HttpResponse.error()`).
 
@@ -361,7 +370,7 @@ Execuções locais em 15/10/2026, mesmo ambiente da F0:
 - **Busca no desktop:** fica na barra lateral do catálogo; o ícone de lupa do header leva o foco até ela.
 - **"Colecionadores também viram":** no Figma aparece só no carrinho; foi usado no detalhe para as recomendações.
 - **Itens fora da demonstração** (Criadores, Aprenda, escanear, "Ler mais", newsletter): mantêm a composição, mas anunciam que não fazem parte da demonstração, em vez de levar a telas vazias.
-- **Comprar:** a F2 para na seleção. O botão mostra um aviso com a edição, a quantidade e o total; carrinho e checkout entram na F3.
+- **Comprar:** na F2 o botão só mostrava um aviso com a seleção. A partir da F3 ele adiciona a seleção ao carrinho e abre o carrinho (seção 28).
 - **Edição inicial:** a mais barata disponível, que corresponde ao preço do card.
 - **Topo mobile:** uma barra com "KURIO" e "Entrar" (ou usuário e "Sair") para manter o acesso à sessão, que o frame mobile não mostra.
 
@@ -389,9 +398,102 @@ Execuções locais em 15/10/2026, mesmo ambiente das fases anteriores:
 - **Fontes:** Roboto Mono do próprio bundle, subset latin, `font-display: swap` (auditoria `font-display` aprovada); não estão no caminho crítico do LCP.
 - **Corrigido pela sondagem:** o detalhe tinha CLS de 0,55 no desktop. A largura da galeria dependia da imagem, e o rodapé subia e descia enquanto a página carregava. A home tinha 0,16, porque os indicadores do carrossel surgiam depois dos dados. Os três casos agora reservam o espaço. A acessibilidade mobile subiu de 97–99 para 100: os indicadores do banner ficavam sob o link "Explorar" (alvo de toque pequeno), e os títulos da aba pulavam um nível.
 
-## 25. Limitações e pendências
+## 25. Carrinho: contratos, API e persistência (F3)
 
-- Carrinho, checkout, pedidos, perfil completo e carteiras continuam provisórios (F3 a F5).
+**Contratos** (`src/contracts/cart.ts`): `Cart { owner, revision, items, itemCount, coupon, notices }`; cada item tem o NFT (com `version`), a edição, `quantity`, `unitPriceEth` e `maxQuantity` (o menor entre o limite por pedido e o estoque). `Quote { quoteId, cartRevision, lines, itemCount, subtotalEth, discountEth, networkFeeEth, totalEth, coupon, nftVersions, createdAt }`. Quantidade é inteiro de 1 a 99; o carrinho tem até 20 edições diferentes.
+
+| Método e rota | Sucesso | Erros principais |
+| --- | --- | --- |
+| `GET /api/cart` | 200 `Cart` (vazio, revisão 0, se ainda não existe) | 401, 422 (`X-Cart-Id` ausente ou inválido) |
+| `POST /api/cart/items` | 200 `Cart` (mesma edição soma na linha existente) | 404, 409 `OUT_OF_STOCK`, 409 `QUANTITY_LIMIT_EXCEEDED` (conta o que já está no carrinho), 422 |
+| `PATCH /api/cart/items/:itemId` | 200 `Cart` | 404, 409 `QUANTITY_LIMIT_EXCEEDED`, 422 (fracionário, zero, negativo; `itemId` malformado) |
+| `DELETE /api/cart/items/:itemId` | 200 `Cart`, idempotente | 422 (`itemId` malformado) |
+| `PUT /api/cart/coupon` | 200 `Cart` | 409 `CONFLICT` (carrinho vazio), 422 `COUPON_INVALID`, 422 `COUPON_EXPIRED` |
+| `DELETE /api/cart/coupon` | 200 `Cart` | — |
+| `DELETE /api/cart/notices` | 200 `Cart` (não muda a revisão) | — |
+| `POST /api/cart/merge` | 200 `Cart` da conta, idempotente | 401, 422 |
+| `POST /api/quotes` | 200 `Quote` (revisão 0 sem carrinho: cotação vazia) | 409 `CART_CHANGED` (inclusive se o carrinho sumiu ou mudou durante a cotação), 422 |
+
+Escritas de visitante (`POST /items`, `PATCH`, `DELETE`, cupom, avisos) com um id já juntado respondem 409 `CART_MERGED`.
+
+- **Dono do carrinho:** com `Authorization`, é a conta do token (o `userId` nunca vem do cliente); sem ele, o carrinho de visitante de `X-Cart-Id`. O id do visitante (`kurio:guest-cart` no `localStorage`) é criado só quando o visitante adiciona algo, então quem nunca usou o carrinho não deixa chave nem faz requisição; depois de um logout não sobra chave fora do mock (o teste de isolamento da F1 continua valendo).
+- **Persistência:** `cartsByUser`, `guestCarts` e `mergedGuestCarts` no banco simulado (seed versão 4), com integridade (edição pertence ao NFT, sem linha duplicada, dono existente, nenhum carrinho de visitante com id já juntado). Cupons no seed: `KURIO10` (10%, válido até 2030) e `EXPIRED` (20%, vencido em 2020). Um carrinho de visitante vazio nunca é gravado.
+- **Transação única:** cada escrita reconcilia, aplica a mudança e incrementa a revisão uma vez, tudo dentro de `transaction`. Uma escrita com erro não grava nada. A junção só incrementa a revisão da conta se algo mudou (linha nova, quantidade ou cupom herdado), e o aviso conta só as linhas adicionadas ou somadas.
+- **Cotação:** lê um único snapshot do banco; se a reconciliação for necessária, a transação revalida que o carrinho ainda existe e está na revisão pedida. Qualquer divergência é 409 `CART_CHANGED`, nunca erro 500.
+- **Mensagens:** os erros de limite dizem o motivo ("só restam 2 disponíveis" ou "o limite é de 3 por pedido") e trazem `fieldErrors.quantity`.
+
+## 26. Dinheiro, cotação e cupom (F3)
+
+- **Precisão:** valores em ETH são strings decimais; toda conta é feita em `bigint` de wei (`src/lib/eth.ts`: `mulEth`, `sumEth`, `subEth`, `percentOfEth`). Não há `number` em nenhum valor monetário. `0.1 × 3` é `0.3`, e 10% de `0.3` é `0.03`, testados contra a resposta da API.
+- **Regra:** `subtotal = Σ preço × quantidade`; `desconto = subtotal × percentual / 100`, arredondado para baixo no wei (nunca dá mais desconto que o devido); `taxa de rede = 0.016 ETH`, estimativa fixa quando há itens ("Taxa de rede" / "Taxa estimada" no Figma); `total = subtotal − desconto + taxa`.
+- **Fonte de verdade:** `POST /api/quotes`. A tela não soma nada: subtotal, desconto, taxa, total e o total de cada linha são os campos da cotação, só formatados (mínimo de duas casas). O cupom é validado só no servidor; o cliente apenas normaliza o código (`trim` e maiúsculas, no schema compartilhado).
+- **Cotação velha nunca aparece como atual:** a chave da query inclui a revisão do carrinho na tela e não há placeholder. Enquanto a cotação da revisão atual carrega, os valores viram skeleton, o resumo fica `aria-busy` e "Conectar e finalizar" fica indisponível (`aria-disabled`, sem perder o foco); o mesmo vale enquanto houver uma mudança do carrinho em voo. Um 409 `CART_CHANGED` é tratado como "recalculando": o carrinho é relido e a nova revisão é cotada. Uma falha mostra o erro com "Tentar novamente", nunca os valores anteriores.
+- **Carrinho não confirmado:** se uma releitura do carrinho falha e há dados no cache, os itens continuam na tela com o aviso "Não foi possível atualizar o carrinho" e "Tentar novamente"; o resumo esconde os valores e mostra "Não foi possível confirmar o total" com "Atualizar carrinho". Uma cotação de um carrinho que não pôde ser relido não é apresentada como atual.
+- **Socket fora do ar:** sem `nft.updated`, uma mudança de preço feita por outra aba ou pelo servidor não chega à tela, e a cotação já carregada continua igual. Na F3 isso é tratado sem polling: com o socket `disconnected`, `unavailable` ou `rejected`, o resumo avisa "Sem atualização em tempo real: preços e estoque podem ter mudado" e "Conectar e finalizar" sempre pede uma nova cotação antes de navegar ("Conferindo valores…"). Só segue para `/checkout` se a nova cotação for da mesma revisão; se o servidor reconciliou (revisão nova ou 409), a tela mostra os valores novos e anuncia "Os valores do carrinho mudaram. Confira o novo total antes de continuar." A nova cotação é feita sempre, conectado ou não.
+- **O que a F4 precisa garantir:** a cotação na tela é só uma prévia. O pedido deve ser criado a partir do `quoteId`, e o servidor deve revalidar a revisão do carrinho, as `nftVersions`, o estoque e o cupom no momento do pedido, recusando com erro estruturado se algo mudou. A cotação deve ter validade (expiração no servidor), e o checkout deve tratar a recusa mostrando o novo total, nunca cobrando o anterior.
+- **Verificação de fora:** o resumo expõe `data-quote-id` e `data-cart-revision`; os testes buscam a cotação em `GET /__mock/quotes/:quoteId` e comparam valor a valor com a tela.
+
+## 27. Junção no login, `nft.updated` e concorrência (F3)
+
+- **Junção:** depois do login, a primeira leitura do carrinho da conta chama `POST /api/cart/merge` se ainda houver id de visitante. Regras (D23): mesma edição vira uma linha com a soma, limitada a `min(limite por pedido, estoque)`; os dois carrinhos são reconciliados antes (preço, estoque, cupom); a conta mantém o próprio cupom ou herda o do visitante; cada ajuste vira um aviso ("foi ajustada de 4 para 3 ao juntar os carrinhos: só restam 3 disponíveis"), além de "Os N itens do seu carrinho de visitante foram adicionados…". O id local só é apagado depois da resposta e se ainda for o mesmo (outra aba pode ter criado outro).
+- **Avisos:** ficam gravados no carrinho até "Entendi" (sobrevivem ao refresh). Os criados depois que a página abriu são anunciados uma vez pelo anunciador global, em qualquer página.
+- **`nft.updated`:** usa a assinatura única da F2 (`useNftRealtimeSync`); o carrinho não abre outro listener, e o painel continua mostrando 1 inscrição para visitante e 2 no perfil. Se o NFT do evento está no carrinho e `version` é maior que a da linha, a cotação na tela é descartada na hora (`resetQueries`) e o carrinho é relido; o servidor reconcilia, grava avisos e a nova revisão é cotada. Duplicados (mesmo `eventId`) e antigos (versão menor ou igual) não mudam nada. O carrinho e a cotação têm `meta.reconcileOnReconnect`: com o socket bloqueado, nada é relido; ao reconectar, o carrinho é reconciliado.
+- **Respostas fora de ordem:** toda mudança responde o carrinho inteiro, e o cache só aceita revisão maior ou igual à que já tem, tanto nas respostas de mudança quanto nas leituras. Antes de cada mudança, leituras do carrinho em voo são canceladas. O primeiro clique de um visitante cria o id e já registra o carrinho vazio no cache, para não haver uma leitura correndo em paralelo com a adição (essa corrida foi reproduzida nos testes e corrigida).
+- **Sessão:** o carrinho da conta usa chave privada (`['user', userId, 'cart']`) e a cotação também; tudo é limpo na troca de sessão (seção 13). Uma resposta da sessão anterior vira `SESSION_CHANGED` e não é escrita nem anunciada. A identidade é capturada no início da mudança, então uma resposta tardia só cai na entrada do seu dono.
+- **Junção e cancelamento (correção pós-auditoria):** antes, a junção rodava dentro da leitura do carrinho da conta; uma mudança que chamasse `cancelQueries` rejeitava a leitura no cliente enquanto o servidor concluía a junção, e o id do visitante ficava no navegador. E uma adição de visitante em voo durante o login podia terminar depois da junção e recriar um carrinho órfão. Agora (D23) a junção é uma promessa única fora da query, espera as escritas de visitante em voo, e o servidor recusa escritas com id já juntado (`CART_MERGED`). No cliente, `CART_MERGED` esquece o id; uma adição de visitante tenta uma vez com id novo. Uma escrita de visitante que leve mais de 10 s (timeout do cliente) não é esperada para sempre: se chegar depois da junção, é recusada, nunca perdida num carrinho órfão.
+- **Testes de concorrência** (`e2e/cart-concurrency.spec.ts`): usam a fila de atrasos do mock, com uma fase nova `phase: 'response'` (o resolver roda e grava, e só a resposta é retida), para reproduzir a resposta que chega depois de a leitura ter sido cancelada. Sem esperas fixas.
+
+## 28. Telas do carrinho (F3)
+
+Seguem os frames "Desktop / Carrinho" e "Mobile / Carrinho".
+
+- **Desktop:** trilha "Início / Mercado / Carrinho", tabela com colunas NFTs, Preço, Edições, Total e remover; linhas de 70 px; resumo "Resumo da carteira" com 332 px, "Código promocional" e "Aplicar", subtotal, desconto, taxa de rede, total, "Conectar e finalizar" e "Continuar explorando"; carrossel "Colecionadores também viram".
+- **Mobile:** botão voltar e título "Carrinho de NFTs", cards de 100 px com a edição e o total da linha, botões de quantidade circulares e o resumo como painel com topo arredondado; o campo de cupom em pílula e o botão de finalizar com 60 px.
+- **Estados:** carregando (skeleton), erro com "Tentar novamente", vazio com "Explorar NFTs", resumo recalculando e erro da cotação com nova tentativa, avisos de ajuste.
+- **Badge:** no header e na aba "Carrinho" do mobile, com o total de unidades; o nome acessível do link inclui a contagem ("Carrinho, 3 itens") e o número visual é decorativo.
+- **Detalhe do NFT:** "COMPRAR" / "Comprar NFT" adiciona a seleção e abre o carrinho; o ícone de carrinho do mobile só adiciona e anuncia. Erros do servidor aparecem na página e são anunciados.
+- **Acessibilidade:** botões de quantidade e de remover com o nome do NFT; quantidade em `output`; limite visível ("Máx. 3"); erros do cupom em `aria-describedby` com `role=alert`; alvos de toque ampliados nos botões de 20–24 px.
+- **Foco (correção pós-auditoria):** um botão `disabled` com foco faz o navegador mover o foco para o `body`. Os controles do carrinho (quantidade, remover, cupom, "Entendi", "Tentar novamente", finalizar) usam `aria-disabled` com o handler ignorando a ativação enquanto há uma mudança em voo ou no limite; continuam focáveis e anunciados como indisponíveis, e o "Máx. N" fica em `aria-describedby`. Ao remover um item, o foco vai para o botão de remover da linha seguinte, ou da anterior, ou para o título do estado vazio (`tabIndex=-1` só nesse título, por ser o destino lógico depois que a lista some). Aplicar o cupom leva o foco para "Remover cupom"; remover leva de volta ao campo. Só se move o foco quando ele foi perdido (está no `body`).
+- **Header:** "Mercado" fica ativo no detalhe do NFT e no carrinho, como no frame.
+- **Próximo passo:** "Conectar e finalizar" leva a `/checkout`, que continua provisório (F4); para visitante, o guard leva ao login e volta para lá.
+- **Desvios do Figma:** o ícone de remover foi exportado do Figma (`delete.svg`). A linha mostra também a edição (o Figma só mostra o id do token), porque o mesmo NFT pode estar no carrinho com mais de uma edição. "Desconto do lançamento" passa a mostrar o código do cupom quando há um. O botão de finalizar fica indisponível enquanto a cotação não é final. No mobile, o nome do NFT quebra em até duas linhas em vez de ser cortado com reticências: o frame tem 414 px e o teste roda a 390 px, onde nomes como "Velvet Oracle #240" não cabem numa linha ao lado dos botões. No desktop, edição e id do token ficam numa linha só (cortada se não couber).
+
+## 29. Resultados da F3
+
+Execuções locais em 15/10/2026, mesmo ambiente das fases anteriores:
+
+- `npm run verify` (typecheck, lint, build): passou.
+- `npx playwright test`, suíte completa, desktop + mobile: **192 aprovados, 2 pulados, 0 falhas** (5,3 min). Os 2 pulados continuam sendo a checagem do commit do deploy (seção 7). Novos: `cart` com 14 testes por projeto (28) e 1 teste do carrinho em `realtime-nft` por projeto (2). `nft-detail` trocou o aviso provisório da F2 pela verificação do item no carrinho.
+- `cart.spec` rodou duas vezes seguidas por teste (`--repeat-each=2`) sem falha.
+- **Instabilidade preexistente corrigida:** `favorites › the list has loading, empty and error states` falhava sob carga também no commit da F2 (3 ou mais falhas em 16 repetições com 8 workers). O teste supunha a lista fora do cache ao abrir, mas no desktop o modal de login fica sobre a home, cujos cards carregam os favoritos assim que a sessão começa. O teste agora recarrega o perfil (sem cards) antes de abrir a lista; a asserção do estado de carregamento ficou igual. Depois da correção: 24 de 24 sob a mesma carga.
+- **Corrida corrigida durante a fase:** a primeira adição de um visitante criava o id e, em paralelo, uma leitura do carrinho ainda vazio podia chegar depois da resposta da adição e apagar o item da tela (seção 27).
+- **Não executado:** smoke contra o deploy. Esta fase não teve push, então a URL publicada ainda serve a F2.
+
+**Correções pós-auditoria** (15/10/2026, mesmo ambiente):
+
+- `npm run verify`: passou. `git diff --check`: sem saída.
+- `npx playwright test`, suíte completa, desktop + mobile, sem retries: **216 aprovados, 2 pulados (os mesmos do commit do deploy), 0 falhas** (5,9 min). São 12 testes novos por projeto: 6 em `cart-concurrency.spec` e 6 em `cart.spec` (falha na releitura com cache, teclado no stepper, foco na remoção, teclado no cupom, ativação repetida com mudança em voo, socket fora do ar). O teste de remoção existente passou a exigir o foco no próximo botão de remover em vez do título, e ganhou a verificação do foco no estado vazio.
+- `cart-concurrency.spec` + `cart.spec` com `--repeat-each=3`: 156 de 156.
+
+| Requisito | Situação | Evidência |
+| --- | --- | --- |
+| R17 adicionar, alterar e remover com disponibilidade por NFT e edição | Coberto | `cart.spec` (adicionar, quantidade e limites, remoção, API rejeitando fracionário, zero, acima do limite e esgotado) |
+| R18 carrinho após refresh; visitante preservado no login | Coberto | `cart.spec` (refresh, junção sem duplicar, ajustes na junção, isolamento A/B) |
+| R19 cupom aplicar e remover; inválido e expirado | Coberto | `cart.spec` (KURIO10, inexistente, EXPIRED, remover) |
+| R20 resumo coerente com a resposta da API | Coberto | `cart.spec` (cada valor da tela comparado com `GET /__mock/quotes/:quoteId`; 409 para revisão antiga) |
+| R21 preço e disponibilidade com o carrinho aberto | Coberto | `cart.spec` (preço, estoque reduzido e esgotado) e `realtime-nft.spec` (socket bloqueado, reconexão, duplicado e antigo) |
+| R22 ETH decimal exato; quantidade inteira | Coberto | `cart.spec` (0.1 × 3 = 0.3; 10% = 0.03; total 0.286) |
+
+## 30. Limitações e pendências
+
+- Checkout, pedidos, perfil completo e carteiras continuam provisórios (F4 e F5). "Conectar e finalizar" leva ao `/checkout` provisório.
+- A taxa de rede é uma estimativa fixa (0.016 ETH); uma rede real cotaria o gas.
+- O carrinho de visitante fica no banco simulado do navegador; "Restaurar estado inicial" apaga os carrinhos, e o id local passa a apontar para um carrinho vazio até a próxima adição.
+- Um carrinho de visitante abandonado nunca expira no mock.
+- **Escritas concorrentes entre abas:** cada aba lê o banco do `localStorage`, aplica a transação e grava o resultado; não há trava entre abas. Duas escritas simultâneas em abas diferentes seguem "a última grava vence", e a revisão pode não refletir as duas. Dentro de uma aba as transações são síncronas e não se intercalam. Resolver isso exigiria um banco multiaba (fora do escopo); um servidor real resolve com transação no banco.
+- Depois de "Restaurar estado inicial" pelo painel, o cache de uma aba aberta pode guardar um carrinho de revisão maior que o do servidor recriado, e a guarda de revisão ignora a leitura menor até recarregar a página (comportamento anterior às correções).
+- No detalhe do NFT, o login dentro da página remonta a tela e a edição escolhida volta à padrão.
+- A corrida em que o carrinho some entre a leitura e a transação da cotação está fechada por construção (revalidação dentro da transação), mas não pode ser provocada de fora no mock, porque o handler é síncrono entre a leitura e a transação; o teste cobre os caminhos de erro equivalentes (carrinho em outra revisão, inexistente, revisão 0).
 - O `nft.updated` de uma aba não chega a outra (abaixo); outra aba só vê a mudança ao refazer as queries.
 - A performance mobile fica em 72–77, abaixo da meta de 90, limitada pelo MSW antes do primeiro render (seção 24); uma API real removeria esse custo.
 - Um refetch da lista de favoritos disparado por outro motivo (reconciliação após reconexão) enquanto uma mudança está em voo pode mostrar o estado do servidor por um instante; o refetch feito ao fim da mudança corrige a tela. O botão continua travado durante esse intervalo.

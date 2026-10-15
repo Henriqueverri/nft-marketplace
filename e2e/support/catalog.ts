@@ -112,9 +112,11 @@ export async function queueNetwork(
   page: Page,
   entry: {
     pathPrefix: string
-    method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
     delaysMs: number[]
     failure?: 'server-error' | 'unavailable' | 'offline'
+    /** `response`: the handler runs at once and its answer is held (an answer about an older state). */
+    phase?: 'request' | 'response'
   },
 ) {
   await callMockControl(page, '/__mock/network/delays', 'POST', entry)

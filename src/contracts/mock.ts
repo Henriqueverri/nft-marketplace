@@ -51,6 +51,8 @@ export const mockStateSchema = z.object({
     collections: z.number().int(),
     wallets: z.number().int(),
     favorites: z.number().int(),
+    /** Account and visitor carts persisted on the server. */
+    carts: z.number().int(),
   }),
   users: z.array(
     z.object({
@@ -126,9 +128,15 @@ export const socketBlockRequestSchema = z.object({ blocked: z.boolean() })
  */
 export const queueDelaysRequestSchema = z.object({
   pathPrefix: z.string().startsWith('/api/'),
-  method: z.enum(['GET', 'POST', 'PUT', 'DELETE']).optional(),
+  method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).optional(),
   delaysMs: z.array(z.number().int().min(0).max(10_000)).min(1).max(10),
   failure: failureModeSchema.exclude(['none']).optional(),
+  /**
+   * `request` (default): the request waits before the handler runs, so its answer
+   * reflects the state after the wait. `response`: the handler runs at once and its
+   * answer is held, as a slow network delivers an answer about an older state.
+   */
+  phase: z.enum(['request', 'response']).optional(),
 })
 export type QueueDelaysRequest = z.infer<typeof queueDelaysRequestSchema>
 

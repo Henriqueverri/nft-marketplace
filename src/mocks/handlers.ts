@@ -1,5 +1,6 @@
 import { accountHandlers } from './api/account'
 import { authHandlers } from './api/auth'
+import { cartHandlers } from './api/cart'
 import { catalogHandlers } from './api/catalog'
 import { favoriteHandlers } from './api/favorites'
 import { assetHandlers } from './assets'
@@ -12,6 +13,7 @@ export const handlers = [
   ...accountHandlers,
   ...catalogHandlers,
   ...favoriteHandlers,
+  ...cartHandlers,
   ...assetHandlers,
   ...socketHandlers,
 ]

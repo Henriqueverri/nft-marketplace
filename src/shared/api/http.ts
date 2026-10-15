@@ -7,6 +7,12 @@ declare module 'axios' {
   interface AxiosRequestConfig {
     /** Session epoch the request was sent under (set by the interceptor). */
     sessionEpoch?: number
+    /**
+     * Not aborted when the session changes; its answer is still discarded
+     * (SESSION_CHANGED). Only for writes whose completion the next session must wait
+     * for: visitor cart writes, which the sign-in merge has to include.
+     */
+    keepOnSessionChange?: boolean
   }
 }
 
@@ -23,6 +29,7 @@ http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (session.token) config.headers.set('Authorization', `Bearer ${session.token}`)
   // Requests of a session are aborted when that session ends, so a slow response
   // started by user A can never resolve inside user B's session.
+  if (config.keepOnSessionChange) return config
   const sessionSignal = sessionStore.getSignal()
   config.signal = config.signal
     ? AbortSignal.any([config.signal as AbortSignal, sessionSignal])
@@ -45,7 +52,7 @@ http.interceptors.response.use(
     if (apiError.isUnauthenticated && sentWithSession && sameSession) {
       sessionStore.end('expired')
     }
-    if (!sameSession && apiError.code === 'CANCELED') {
+    if (!sameSession && (apiError.code === 'CANCELED' || config?.keepOnSessionChange)) {
       return Promise.reject(new ApiError('SESSION_CHANGED', { cause: error }))
     }
     return Promise.reject(apiError)

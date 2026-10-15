@@ -12,6 +12,7 @@ import {
   type MockState,
 } from '@/contracts/mock'
 import { profileUpdatedEvent, updateDisplayName } from './api/account'
+import { clearRecordedQuotes, getRecordedQuote, summarizeCarts } from './api/cart'
 import { apiError, readJson, validationError } from './api/respond'
 import { isSessionActive } from './api/session'
 import { getStorageStatus, readDb, resetDb, transaction } from './db/database'
@@ -45,7 +46,7 @@ async function buildState(): Promise<MockState> {
       seedVersion: SEED_VERSION,
       scenario: getScenario(),
       storage,
-      counts: { users: 0, activeSessions: 0, nfts: 0, collections: 0, wallets: 0, favorites: 0 },
+      counts: { users: 0, activeSessions: 0, nfts: 0, collections: 0, wallets: 0, favorites: 0, carts: 0 },
       users: [],
       socket,
     }
@@ -63,6 +64,7 @@ async function buildState(): Promise<MockState> {
       collections: db.collections.length,
       wallets: Object.values(db.walletsByUser).reduce((total, wallets) => total + wallets.length, 0),
       favorites: Object.values(db.favoritesByUser).reduce((total, favorites) => total + favorites.length, 0),
+      carts: Object.keys(db.cartsByUser).length + Object.keys(db.guestCarts).length,
     },
     users: db.users.map((user) => ({
       id: user.id,
@@ -101,6 +103,7 @@ export const controlHandlers = [
     resetScenario()
     resetNetwork()
     clearNftEventHistory()
+    clearRecordedQuotes()
     setSocketBlocked(false)
     closeAllConnections()
     return HttpResponse.json(await buildState())
@@ -182,6 +185,15 @@ export const controlHandlers = [
     const db = await readDb()
     if (!db.users.some((user) => user.id === parsed.data)) return apiError('NOT_FOUND', 'Usuário inexistente.')
     return HttpResponse.json({ nftIds: (db.favoritesByUser[parsed.data] ?? []).map((favorite) => favorite.nftId) })
+  }),
+
+  /** Every persisted cart (accounts and visitors), to check server state from outside the app. */
+  http.get('/__mock/carts', async () => HttpResponse.json(summarizeCarts(await readDb()))),
+
+  /** A quote exactly as POST /api/quotes sent it (the last 50 are kept in memory). */
+  http.get('/__mock/quotes/:quoteId', ({ params }) => {
+    const quote = getRecordedQuote(String(params.quoteId))
+    return quote ? HttpResponse.json(quote) : apiError('NOT_FOUND', 'Cotação não registrada.')
   }),
 
   /**

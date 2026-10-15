@@ -32,6 +32,27 @@ export function formatEthDisplay(amount: string): string {
   return `${whole}.${fraction.padEnd(2, '0')}`
 }
 
+/** amount × quantity, exact (quantity is a whole number of editions). */
+export function mulEth(amount: string, quantity: number): string {
+  if (!Number.isSafeInteger(quantity) || quantity < 0) throw new Error(`Invalid quantity: ${quantity}`)
+  return formatEth(parseEth(amount) * BigInt(quantity))
+}
+
+/** Sum of decimal ETH strings, exact. */
+export function sumEth(amounts: readonly string[]): string {
+  return formatEth(amounts.reduce((total, amount) => total + parseEth(amount), 0n))
+}
+
+/** `percent`% of an amount, rounded down to the wei (never charges a fraction more). */
+export function percentOfEth(amount: string, percent: number): string {
+  if (!Number.isInteger(percent) || percent < 0 || percent > 100) throw new Error(`Invalid percent: ${percent}`)
+  return formatEth((parseEth(amount) * BigInt(percent)) / 100n)
+}
+
+export function subEth(amount: string, minus: string): string {
+  return formatEth(parseEth(amount) - parseEth(minus))
+}
+
 export function minEth(amounts: readonly string[]): string {
   if (amounts.length === 0) throw new Error('minEth needs at least one amount')
   return formatEth(amounts.map(parseEth).reduce((min, wei) => (wei < min ? wei : min)))

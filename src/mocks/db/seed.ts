@@ -17,7 +17,7 @@ import {
  * Everything is reproducible except the password salts, which are random by design
  * (they are generated when the seed is materialized, on first load and on reset).
  */
-export const SEED_VERSION = 2
+export const SEED_VERSION = 4
 
 /** Fictitious demo accounts (documented in the README). */
 export const SEED_ACCOUNTS = [
@@ -337,6 +337,13 @@ export function buildSeedData(): Omit<DbState, 'credentials'> {
     reviews: buildReviews(nfts),
     recommendations: buildRecommendations(nfts),
     favoritesByUser: buildFavorites(),
+    cartsByUser: {},
+    guestCarts: {},
+    mergedGuestCarts: {},
+    coupons: [
+      { code: 'KURIO10', percentOff: 10, expiresAt: '2030-12-31T23:59:59.000Z' },
+      { code: 'EXPIRED', percentOff: 20, expiresAt: '2020-01-01T00:00:00.000Z' },
+    ],
   }
 }
 

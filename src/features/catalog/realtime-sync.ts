@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { FeaturedResponse, Nft, NftDetail, NftListResponse } from '@/contracts/catalog'
 import type { NftUpdatedEvent } from '@/contracts/events'
 import type { Favorite } from '@/contracts/favorites'
+import { syncCartWithNftUpdate } from '@/features/cart/queries'
 import { favoriteKeys } from '@/features/favorites/queries'
 import { formatEthDisplay } from '@/lib/eth'
 import { useAnnounce } from '@/shared/feedback/announcer-context'
@@ -36,7 +37,8 @@ function dependsOnPrice(params: NftListParams): boolean {
 
 /**
  * Keeps every cached copy of an NFT in step with `nft.updated`: detail, listings,
- * highlights, related lists and the current user's favorites. Mounted once for the
+ * highlights, related lists and the current user's favorites, and refreshes the cart
+ * when the NFT is in it (one subscription for the whole app). Mounted once for the
  * whole app; the event is public, and the only private entry it touches belongs to
  * the current session (the cache is reset on every session change).
  */
@@ -70,6 +72,8 @@ export function useNftRealtimeSync(): void {
         list?.map((favorite) => ({ ...favorite, nft: patch(favorite.nft) })),
       )
     }
+    // The cart is not patched locally: its prices and limits come only from the server.
+    syncCartWithNftUpdate(queryClient, event)
     if (stale) return
 
     // A new price can move an NFT to another page or in or out of a price range.
