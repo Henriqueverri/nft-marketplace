@@ -107,5 +107,27 @@ export function findIntegrityProblems(state: DbState): string[] {
   const couponCodes = state.coupons.map((coupon) => coupon.code)
   if (new Set(couponCodes).size !== couponCodes.length) problems.push('duplicate coupon code')
 
+  const orderIds = new Set<string>()
+  const idempotencyKeys = new Set<string>()
+  for (const record of state.orders) {
+    const { order } = record
+    if (orderIds.has(order.orderId)) problems.push(`duplicate order ${order.orderId}`)
+    orderIds.add(order.orderId)
+    if (!userIds.has(record.userId)) problems.push(`order ${order.orderId} of unknown user`)
+    const key = `${record.userId} ${record.idempotencyKey}`
+    if (idempotencyKeys.has(key)) problems.push(`idempotency key reused by order ${order.orderId}`)
+    idempotencyKeys.add(key)
+    const settled = order.status !== 'pending'
+    if (settled !== (order.settledAt !== null)) problems.push(`order ${order.orderId} settledAt does not match its status`)
+    if ((order.status === 'rejected') !== (order.rejection !== null)) problems.push(`order ${order.orderId} rejection does not match its status`)
+  }
+
+  for (const [userId, quotes] of Object.entries(state.issuedQuotes)) {
+    if (!userIds.has(userId)) problems.push(`quotes of unknown user ${userId}`)
+    for (const { quote, orderId } of quotes) {
+      if (orderId && !orderIds.has(orderId)) problems.push(`quote ${quote.quoteId} used by unknown order ${orderId}`)
+    }
+  }
+
   return problems
 }

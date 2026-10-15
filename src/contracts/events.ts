@@ -50,7 +50,11 @@ export type NftUpdatedEvent = EventEnvelope<
   }
 >
 
-/** Private (F4): the state of an order changed. Terminal states never regress. */
+/**
+ * Private: an order was created (`pending`, version 1) or settled (`confirmed` or
+ * `rejected`, version 2). `version` equals the order's `version` in the REST API.
+ * Only the identity and the state travel here; the receipt is read over REST.
+ */
 export type OrderUpdatedEvent = EventEnvelope<
   'order.updated',
   { orderId: string; status: 'pending' | 'confirmed' | 'rejected' }
@@ -71,6 +75,7 @@ export interface ServerToClientEvents {
   'system.pong': (event: SystemPongEvent) => void
   'profile.updated': (event: ProfileUpdatedEvent) => void
   'nft.updated': (event: NftUpdatedEvent) => void
+  'order.updated': (event: OrderUpdatedEvent) => void
 }
 
 export interface ClientToServerEvents {

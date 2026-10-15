@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { cartItemIdSchema, cartNoticeSchema, guestCartIdSchema, quantitySchema } from '@/contracts/cart'
+import { cartItemIdSchema, cartNoticeSchema, guestCartIdSchema, quantitySchema, quoteSchema } from '@/contracts/cart'
+import { idempotencyKeySchema, orderIdSchema, orderSchema } from '@/contracts/orders'
 import { collectionSchema, networkSchema, nftIdSchema, nftSchema, reviewSchema } from '@/contracts/catalog'
 import { ethAmountSchema, isoDateTimeSchema, userIdSchema } from '@/contracts/common'
 import { walletSchema } from '@/contracts/wallets'
@@ -75,6 +76,28 @@ const couponRecordSchema = z.object({
 })
 export type CouponRecord = z.infer<typeof couponRecordSchema>
 
+/** A quote the server sent to a user; only these can back an order. */
+const issuedQuoteRecordSchema = z.object({
+  quote: quoteSchema,
+  expiresAt: isoDateTimeSchema,
+  /** The order created from it; a quote backs at most one order. */
+  orderId: orderIdSchema.nullable(),
+})
+export type IssuedQuoteRecord = z.infer<typeof issuedQuoteRecordSchema>
+
+const orderRecordSchema = z.object({
+  userId: userIdSchema,
+  idempotencyKey: idempotencyKeySchema,
+  /** Canonical JSON of the validated request: same key with another payload is a conflict. */
+  requestFingerprint: z.string(),
+  /** Outcome the payment scenario planned at creation; null holds it pending. */
+  plannedOutcome: z.enum(['confirmed', 'rejected']).nullable(),
+  settlesAt: isoDateTimeSchema.nullable(),
+  /** The public order, receipt included, exactly as the API returns it. */
+  order: orderSchema,
+})
+export type OrderRecord = z.infer<typeof orderRecordSchema>
+
 export const dbStateSchema = z.object({
   schemaVersion: z.literal(DB_SCHEMA_VERSION),
   seedVersion: z.number().int(),
@@ -101,5 +124,8 @@ export const dbStateSchema = z.object({
    */
   mergedGuestCarts: z.record(guestCartIdSchema, isoDateTimeSchema),
   coupons: z.array(couponRecordSchema),
+  /** Quotes issued to each user (the most recent ones), checked when an order is created. */
+  issuedQuotes: z.record(userIdSchema, z.array(issuedQuoteRecordSchema)),
+  orders: z.array(orderRecordSchema),
 })
 export type DbState = z.infer<typeof dbStateSchema>

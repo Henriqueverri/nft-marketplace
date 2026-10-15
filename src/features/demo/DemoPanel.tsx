@@ -247,7 +247,7 @@ function ScenarioForm({ initial, pending, onApply }: ScenarioFormProps) {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    onApply({ latencyMs, failure, realtimeClient })
+    onApply({ ...initial, latencyMs, failure, realtimeClient })
   }
 
   const selectClass =

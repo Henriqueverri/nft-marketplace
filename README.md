@@ -85,7 +85,7 @@ O painel no rodapé mostra a sessão atual, o estado e a identidade da conexão 
 Disponível só com `VITE_ENABLE_MOCKS=true`. O painel e os testes usam estas rotas; o app nunca acessa o banco diretamente.
 
 - `GET /__mock/status` e `GET /__mock/state`: estado do mock, sem segredos.
-- `GET`/`PUT /__mock/scenario`: cenário de rede, por exemplo `{ "latencyMs": 1500, "failure": "none" }`.
+- `GET`/`PUT /__mock/scenario`: cenário de rede, por exemplo `{ "latencyMs": 1500, "failure": "none" }`. `"payment"` define como termina o pagamento dos próximos pedidos: `confirm` (padrão), `reject` ou `hold` (fica pendente até ser resolvido). `"wallet"` define a resposta do app de carteira ao conectar: `approve` (padrão) ou `reject`.
 - `POST /__mock/reset`: restaura o seed.
 - `POST /__mock/session/expire`: vence as sessões ativas.
 - `POST /__mock/socket/disconnect` e `GET /__mock/socket/connections`: conexões Socket.IO (e tentativas recusadas durante o bloqueio).
@@ -98,6 +98,10 @@ Disponível só com `VITE_ENABLE_MOCKS=true`. O painel e os testes usam estas ro
 - `GET /__mock/users/:userId/favorites`: favoritos gravados de um usuário.
 - `GET /__mock/carts`: carrinhos gravados (contas e visitantes) e ids de visitante já juntados.
 - `GET /__mock/quotes/:quoteId`: uma cotação exatamente como `POST /api/quotes` a respondeu.
+- `GET /__mock/orders`: pedidos gravados (dono, estado, chave de idempotência, cotação e total).
+- `POST /__mock/orders/:orderId/resolve`: `{ "outcome": "confirmed" }` ou `"rejected"` liquida agora um pedido pendente; um pedido já confirmado ou recusado responde 409 e não muda. Sem isso, `confirm` e `reject` liquidam sozinhos 1,5 s depois da criação e avisam o dono por `order.updated`.
+- `POST /__mock/orders/:orderId/replay`: reenvia ao dono o último `order.updated` do pedido (`{ "kind": "duplicate" }`) ou o anterior com id novo (`"stale"`); `"delivery": "broadcast"` envia a todos os sockets, simulando um erro de roteamento. 409 se o pedido ainda não emitiu eventos.
+- `POST /__mock/wallets/disconnect`: o app de carteira derruba as conexões (`{ "userId": "usr_ana" }` para um usuário só).
 
 ### Carrinho e cupons
 

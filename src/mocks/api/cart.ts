@@ -15,6 +15,7 @@ import {
   type Quote,
 } from '@/contracts/cart'
 import type { Edition, Nft } from '@/contracts/catalog'
+import { QUOTE_TTL_MS } from '@/contracts/orders'
 import { formatEthDisplay, mulEth, parseEth, percentOfEth, subEth, sumEth } from '@/lib/eth'
 import { readDb, transaction } from '../db/database'
 import type { CartRecord, CouponRecord, DbState } from '../db/schema'
@@ -29,7 +30,7 @@ import { requireSession } from './session'
  * response never shows a line the server would refuse to quote.
  */
 
-type CartOwner = { kind: 'user'; userId: string } | { kind: 'guest'; cartId: string }
+export type CartOwner = { kind: 'user'; userId: string } | { kind: 'guest'; cartId: string }
 
 const MAX_NOTICES = 10
 /** Merged visitor ids kept to refuse late writes; the oldest are forgotten first. */
@@ -89,7 +90,7 @@ function markMerged(draft: DbState, cartId: string, now: string): void {
   for (const id of ids.slice(0, ids.length - MAX_MERGED_GUEST_CARTS)) delete draft.mergedGuestCarts[id]
 }
 
-function findEdition(db: DbState, nftId: string, editionId: string): { nft: Nft; edition: Edition } | null {
+export function findEdition(db: DbState, nftId: string, editionId: string): { nft: Nft; edition: Edition } | null {
   const nft = db.nfts.find((candidate) => candidate.id === nftId)
   const edition = nft?.editions.find((candidate) => candidate.id === editionId)
   return nft && edition ? { nft, edition } : null
@@ -116,7 +117,7 @@ function notice(kind: CartNoticeKind, message: string, nftId: string | null, now
   return { id: `ntc_${crypto.randomUUID()}`, kind, message, nftId, createdAt: now }
 }
 
-function lineLabel(nft: { name: string }, edition: { name: string }) {
+export function lineLabel(nft: { name: string }, edition: { name: string }) {
   return `${nft.name} (edição ${edition.name})`
 }
 
@@ -254,7 +255,22 @@ export function clearRecordedQuotes(): void {
   recordedQuotes.clear()
 }
 
-function buildQuote(db: DbState, cart: CartRecord | undefined, now: string): Quote {
+/** Quotes kept per user to back orders; older ones are forgotten (QUOTE_STALE, not found). */
+const MAX_ISSUED_QUOTES = 20
+
+/**
+ * Remembers a quote sent to a user, inside the caller's transaction: only a quote the
+ * server issued to that user can back an order, and only until it expires.
+ */
+export function issueQuote(draft: DbState, owner: CartOwner, quote: Quote): void {
+  if (owner.kind !== 'user') return
+  const issued = (draft.issuedQuotes[owner.userId] ??= [])
+  issued.push({ quote, expiresAt: new Date(Date.parse(quote.createdAt) + QUOTE_TTL_MS).toISOString(), orderId: null })
+  if (issued.length > MAX_ISSUED_QUOTES) issued.splice(0, issued.length - MAX_ISSUED_QUOTES)
+}
+
+/** The quote values of a cart as it is: the same rules as POST /quotes, without an id. */
+export function priceCart(db: DbState, cart: CartRecord | undefined): Omit<Quote, 'quoteId' | 'createdAt'> {
   const lines = (cart?.lines ?? []).map((line) => ({
     itemId: line.editionId,
     nftId: line.nftId,
@@ -268,8 +284,7 @@ function buildQuote(db: DbState, cart: CartRecord | undefined, now: string): Quo
   const networkFeeEth = lines.length ? ESTIMATED_NETWORK_FEE_ETH : '0'
   const nftVersions: Record<string, number> = {}
   for (const line of lines) nftVersions[line.nftId] = db.nfts.find((nft) => nft.id === line.nftId)!.version
-  const quote: Quote = {
-    quoteId: `qt_${crypto.randomUUID()}`,
+  return {
     cartRevision: cart?.revision ?? 0,
     lines,
     itemCount: lines.reduce((total, line) => total + line.quantity, 0),
@@ -279,8 +294,11 @@ function buildQuote(db: DbState, cart: CartRecord | undefined, now: string): Quo
     totalEth: sumEth([subEth(subtotalEth, discountEth), networkFeeEth]),
     coupon: coupon ? { code: coupon.code, percentOff: coupon.percentOff } : null,
     nftVersions,
-    createdAt: now,
   }
+}
+
+export function buildQuote(db: DbState, cart: CartRecord | undefined, now: string): Quote {
+  const quote: Quote = { quoteId: `qt_${crypto.randomUUID()}`, ...priceCart(db, cart), createdAt: now }
   recordedQuotes.set(quote.quoteId, quote)
   if (recordedQuotes.size > 50) recordedQuotes.delete(recordedQuotes.keys().next().value!)
   return quote
@@ -515,8 +533,9 @@ export const cartHandlers = [
    * reset), the answer is 409 CART_CHANGED, never a quote for other items.
    *
    * Each decision is taken on one state of the database, with no await between the
-   * check and its use: the snapshot when nothing needs reconciling (a plain read
-   * writes nothing), or the transaction's own draft when it does.
+   * check and its use: the snapshot when nothing needs reconciling, or the
+   * transaction's own draft when it does. A quote sent to an account is also kept
+   * (issuedQuotes), because only those can back an order; a visitor quote is not.
    */
   http.post(
     '/api/quotes',
@@ -533,7 +552,11 @@ export const cartHandlers = [
       const snapshot = cartOf(db, owner)
       if (!snapshot) return cartRevision === 0 ? HttpResponse.json(buildQuote(db, undefined, now)) : cartChangedError()
       if (!reconcileCart(db, structuredClone(snapshot), now)) {
-        return snapshot.revision === cartRevision ? HttpResponse.json(buildQuote(db, snapshot, now)) : cartChangedError()
+        if (snapshot.revision !== cartRevision) return cartChangedError()
+        const quote = buildQuote(db, snapshot, now)
+        // An account quote can back an order, so the server keeps it.
+        if (owner.kind === 'user') await transaction((draft) => issueQuote(draft, owner, quote))
+        return HttpResponse.json(quote)
       }
 
       const quote = await transaction((draft) => {
@@ -543,7 +566,10 @@ export const cartHandlers = [
           cart.revision += 1
           cart.updatedAt = now
         }
-        return cart.revision === cartRevision ? buildQuote(draft, cart, now) : null
+        if (cart.revision !== cartRevision) return null
+        const built = buildQuote(draft, cart, now)
+        issueQuote(draft, owner, built)
+        return built
       })
       return quote ? HttpResponse.json(quote) : cartChangedError()
     }),

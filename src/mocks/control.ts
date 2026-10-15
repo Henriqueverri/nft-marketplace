@@ -3,16 +3,21 @@ import { z } from 'zod'
 import { displayNameSchema } from '@/contracts/account'
 import { userIdSchema } from '@/contracts/common'
 import {
+  disconnectWalletsRequestSchema,
   emitTestEventRequestSchema,
   mockScenarioSchema,
   queueDelaysRequestSchema,
   replayNftEventRequestSchema,
+  replayOrderEventRequestSchema,
+  resolveOrderRequestSchema,
   socketBlockRequestSchema,
   updateNftRequestSchema,
   type MockState,
 } from '@/contracts/mock'
 import { profileUpdatedEvent, updateDisplayName } from './api/account'
 import { clearRecordedQuotes, getRecordedQuote, summarizeCarts } from './api/cart'
+import { clearOrderTimers, replayOrderEvent, resolveOrder, summarizeOrders } from './api/orders'
+import { disconnectWallets } from './api/wallets'
 import { apiError, readJson, validationError } from './api/respond'
 import { isSessionActive } from './api/session'
 import { getStorageStatus, readDb, resetDb, transaction } from './db/database'
@@ -46,7 +51,7 @@ async function buildState(): Promise<MockState> {
       seedVersion: SEED_VERSION,
       scenario: getScenario(),
       storage,
-      counts: { users: 0, activeSessions: 0, nfts: 0, collections: 0, wallets: 0, favorites: 0, carts: 0 },
+      counts: { users: 0, activeSessions: 0, nfts: 0, collections: 0, wallets: 0, favorites: 0, carts: 0, orders: 0 },
       users: [],
       socket,
     }
@@ -65,6 +70,7 @@ async function buildState(): Promise<MockState> {
       wallets: Object.values(db.walletsByUser).reduce((total, wallets) => total + wallets.length, 0),
       favorites: Object.values(db.favoritesByUser).reduce((total, favorites) => total + favorites.length, 0),
       carts: Object.keys(db.cartsByUser).length + Object.keys(db.guestCarts).length,
+      orders: db.orders.length,
     },
     users: db.users.map((user) => ({
       id: user.id,
@@ -104,6 +110,8 @@ export const controlHandlers = [
     resetNetwork()
     clearNftEventHistory()
     clearRecordedQuotes()
+    clearOrderTimers()
+    disconnectWallets()
     setSocketBlocked(false)
     closeAllConnections()
     return HttpResponse.json(await buildState())
@@ -189,6 +197,35 @@ export const controlHandlers = [
 
   /** Every persisted cart (accounts and visitors), to check server state from outside the app. */
   http.get('/__mock/carts', async () => HttpResponse.json(summarizeCarts(await readDb()))),
+
+  /** Every persisted order (any user), to count and inspect them from outside the app. */
+  http.get('/__mock/orders', async () => HttpResponse.json({ orders: summarizeOrders(await readDb()) })),
+
+  /** Settles a pending order now; a confirmed or rejected order keeps its status (409). */
+  http.post('/__mock/orders/:orderId/resolve', async ({ params, request }) => {
+    const parsed = resolveOrderRequestSchema.safeParse(await readJson(request))
+    if (!parsed.success) return validationError(parsed.error)
+    const result = await resolveOrder(String(params.orderId), parsed.data.outcome)
+    if (!result) return apiError('NOT_FOUND', 'Pedido não encontrado.')
+    if (!result.settled) return apiError('CONFLICT', `O pedido já está ${result.order.status === 'confirmed' ? 'confirmado' : 'recusado'}.`)
+    return HttpResponse.json(result.order)
+  }),
+
+  /** Re-sends an order's last `order.updated` (duplicate) or the one before it (stale). */
+  http.post('/__mock/orders/:orderId/replay', async ({ params, request }) => {
+    const parsed = replayOrderEventRequestSchema.safeParse(await readJson(request))
+    if (!parsed.success) return validationError(parsed.error)
+    const result = await replayOrderEvent(String(params.orderId), parsed.data.kind, parsed.data.delivery)
+    if (!result.ok) return apiError('CONFLICT', result.message)
+    return HttpResponse.json({ eventId: result.event.eventId, version: result.event.version, delivered: result.delivered })
+  }),
+
+  /** The wallet app drops its connections (as if the user disconnected it there). */
+  http.post('/__mock/wallets/disconnect', async ({ request }) => {
+    const parsed = disconnectWalletsRequestSchema.safeParse(await readJson(request))
+    if (!parsed.success) return validationError(parsed.error)
+    return HttpResponse.json({ disconnected: disconnectWallets(parsed.data?.userId) })
+  }),
 
   /** A quote exactly as POST /api/quotes sent it (the last 50 are kept in memory). */
   http.get('/__mock/quotes/:quoteId', ({ params }) => {

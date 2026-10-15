@@ -20,6 +20,9 @@ const fallbackMessages: Record<ErrorCode, string> = {
   OUT_OF_STOCK: 'Esta edição está esgotada.',
   CART_CHANGED: 'O carrinho mudou. Atualizando o resumo.',
   CART_MERGED: 'Este carrinho de visitante já foi juntado ao carrinho de uma conta.',
+  QUOTE_STALE: 'Os valores do pedido mudaram. Confira e confirme de novo.',
+  IDEMPOTENCY_CONFLICT: 'Esta tentativa de compra já foi enviada com outros dados. Revise o pedido e envie de novo.',
+  WALLET_REJECTED: 'A conexão foi recusada na carteira.',
   COUPON_INVALID: 'Cupom inválido.',
   COUPON_EXPIRED: 'Este cupom expirou.',
   STORAGE_FULL: 'Não foi possível salvar: o armazenamento local do navegador está cheio.',
@@ -38,13 +41,25 @@ export class ApiError extends Error {
   readonly code: ErrorCode
   readonly status: number | null
   readonly fieldErrors: Record<string, string[]>
+  /** Unvalidated `error.details`; the feature handling the code parses it with its schema. */
+  readonly details: Record<string, unknown> | null
 
-  constructor(code: ErrorCode, options: { message?: string; status?: number | null; fieldErrors?: Record<string, string[]>; cause?: unknown } = {}) {
+  constructor(
+    code: ErrorCode,
+    options: {
+      message?: string
+      status?: number | null
+      fieldErrors?: Record<string, string[]>
+      details?: Record<string, unknown>
+      cause?: unknown
+    } = {},
+  ) {
     super(options.message ?? fallbackMessages[code], { cause: options.cause })
     this.name = 'ApiError'
     this.code = code
     this.status = options.status ?? null
     this.fieldErrors = options.fieldErrors ?? {}
+    this.details = options.details ?? null
   }
 
   /** Network failures, timeouts and 5xx can be retried; 4xx are final. */
@@ -87,6 +102,7 @@ export function toApiError(error: unknown): ApiError {
     message: body.data.error.message,
     status: error.response.status,
     fieldErrors: body.data.error.fieldErrors,
+    details: body.data.error.details,
     cause: error,
   })
 }

@@ -1,6 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { PlaceholderPage } from '@/shared/layout/PlaceholderPage'
+import { OrderStatusPage } from '@/features/orders/components/OrderStatusPage'
 
 export const Route = createFileRoute('/_authenticated/orders/$orderId')({
-  component: () => <PlaceholderPage title="Confirmação de pedido" phase="F4" />,
+  component: OrderRoute,
 })
+
+function OrderRoute() {
+  const { orderId } = Route.useParams()
+  return <OrderStatusPage key={orderId} orderId={orderId} />
+}

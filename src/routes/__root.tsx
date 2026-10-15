@@ -6,6 +6,7 @@ import type { RouterContext } from '@/app/router'
 import { useCartNoticesAnnouncer } from '@/features/cart/components/CartNoticesAnnouncer'
 import { useNftRealtimeSync } from '@/features/catalog/realtime-sync'
 import { DemoPanel } from '@/features/demo/DemoPanel'
+import { OrderNotices } from '@/features/orders/components/OrderNotices'
 import { cn } from '@/lib/utils'
 import { DESKTOP_MEDIA_QUERY, useMediaQuery } from '@/shared/hooks/use-media-query'
 import { NotFoundPage } from '@/shared/layout/NotFoundPage'
@@ -42,6 +43,7 @@ function RootLayout() {
       </a>
       {isDesktop ? <SiteHeader /> : authPage ? null : <MobileTopBar />}
       <RealtimeUnavailableNotice />
+      <OrderNotices />
       {/* At least a viewport tall: while a route or its data loads, the footer stays
           below the fold instead of jumping down when the content arrives. */}
       <main id="conteudo" tabIndex={-1} className="min-h-dvh flex-1 outline-none">

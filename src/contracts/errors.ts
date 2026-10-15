@@ -22,6 +22,12 @@ export const API_ERROR_STATUS = {
   CART_CHANGED: 409,
   /** Cart: a visitor write to a cart id that was already merged into an account. */
   CART_MERGED: 409,
+  /** Order: the quote no longer matches the cart or the catalog; `details` says what changed. */
+  QUOTE_STALE: 409,
+  /** Order: the Idempotency-Key was already used with a different payload. */
+  IDEMPOTENCY_CONFLICT: 409,
+  /** Wallet: the (simulated) wallet app refused the connection. */
+  WALLET_REJECTED: 409,
   COUPON_INVALID: 422,
   COUPON_EXPIRED: 422,
   STORAGE_FULL: 507,
@@ -41,6 +47,8 @@ export const apiErrorPayloadSchema = z.object({
   message: z.string(),
   /** Per-field messages for VALIDATION_FAILED, keyed by request field name. */
   fieldErrors: z.record(z.string(), z.array(z.string())).optional(),
+  /** Structured data of some codes, parsed by the feature that handles them (QUOTE_STALE). */
+  details: z.record(z.string(), z.unknown()).optional(),
 })
 export type ApiErrorPayload = z.infer<typeof apiErrorPayloadSchema>
 

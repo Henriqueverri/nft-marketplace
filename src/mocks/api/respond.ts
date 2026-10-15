@@ -6,9 +6,10 @@ export function apiError(
   code: ApiErrorCode,
   message: string,
   fieldErrors?: Record<string, string[]>,
+  details?: Record<string, unknown>,
 ): HttpResponse<ApiErrorBody> {
   return HttpResponse.json(
-    { error: { code, message, ...(fieldErrors ? { fieldErrors } : {}) } },
+    { error: { code, message, ...(fieldErrors ? { fieldErrors } : {}), ...(details ? { details } : {}) } },
     { status: API_ERROR_STATUS[code] },
   )
 }

@@ -17,6 +17,17 @@ export const realtimeClientModeSchema = z.enum(['available', 'unavailable'])
 export type RealtimeClientMode = z.infer<typeof realtimeClientModeSchema>
 
 /**
+ * How the simulated payment of a new order ends: `confirm` and `reject` settle it
+ * PAYMENT_SETTLE_MS after creation; `hold` keeps it pending until
+ * POST /__mock/orders/:orderId/resolve. Read when the order is created.
+ */
+export const paymentModeSchema = z.enum(['confirm', 'reject', 'hold'])
+export type PaymentMode = z.infer<typeof paymentModeSchema>
+
+/** How the simulated wallet app answers a connection request. */
+export const walletModeSchema = z.enum(['approve', 'reject'])
+
+/**
  * `latencyMs` and `failure` apply to every /api/* request; control endpoints are
  * never delayed or failed. `realtimeClient` applies to the realtime client chunk.
  */
@@ -24,11 +35,19 @@ export const mockScenarioSchema = z.object({
   latencyMs: z.number().int().min(0).max(10_000),
   failure: failureModeSchema,
   realtimeClient: realtimeClientModeSchema.default('available'),
+  payment: paymentModeSchema.default('confirm'),
+  wallet: walletModeSchema.default('approve'),
 })
 export type MockScenario = z.infer<typeof mockScenarioSchema>
 export type MockScenarioInput = z.input<typeof mockScenarioSchema>
 
-export const DEFAULT_SCENARIO: MockScenario = { latencyMs: 100, failure: 'none', realtimeClient: 'available' }
+export const DEFAULT_SCENARIO: MockScenario = {
+  latencyMs: 100,
+  failure: 'none',
+  realtimeClient: 'available',
+  payment: 'confirm',
+  wallet: 'approve',
+}
 
 export const storageStatusSchema = z.enum(['ok', 'corrupted'])
 
@@ -53,6 +72,7 @@ export const mockStateSchema = z.object({
     favorites: z.number().int(),
     /** Account and visitor carts persisted on the server. */
     carts: z.number().int(),
+    orders: z.number().int(),
   }),
   users: z.array(
     z.object({
@@ -153,3 +173,25 @@ export const networkActivitySchema = z.object({
 export type NetworkActivity = z.infer<typeof networkActivitySchema>
 
 export const userFavoritesResponseSchema = z.object({ nftIds: z.array(z.string()) })
+
+/**
+ * POST /__mock/orders/:orderId/resolve: settles a pending order now, whatever the
+ * payment scenario. A settled order answers 409 CONFLICT and keeps its status.
+ */
+export const resolveOrderRequestSchema = z.object({
+  outcome: z.enum(['confirmed', 'rejected']),
+})
+export type ResolveOrderRequest = z.infer<typeof resolveOrderRequestSchema>
+
+/**
+ * POST /__mock/orders/:orderId/replay: re-sends the last `order.updated` of an order
+ * (`duplicate`, same eventId) or the one before it under a new eventId (`stale`).
+ * `broadcast` delivers it to every connection, simulating a routing bug.
+ */
+export const replayOrderEventRequestSchema = z.object({
+  kind: z.enum(['duplicate', 'stale']),
+  delivery: z.enum(['owner', 'broadcast']).default('owner'),
+})
+
+/** POST /__mock/wallets/disconnect: the wallet app drops its connections (one user or all). */
+export const disconnectWalletsRequestSchema = z.object({ userId: userIdSchema.optional() }).optional()

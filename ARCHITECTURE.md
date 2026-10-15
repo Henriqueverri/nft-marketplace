@@ -141,6 +141,16 @@ Cada item segue o formato: problema, escolha, alternativa descartada e motivo.
 - **D21, revisão do carrinho e cotação por revisão (F3):** **problema:** um total calculado para itens que já mudaram não pode aparecer como atual. **Escolha:** toda mudança do carrinho incrementa `revision`; `POST /quotes` recebe `{ cartRevision }` e responde 409 `CART_CHANGED` se o carrinho do servidor estiver em outra revisão; no cliente a cotação é uma query por revisão, sem dados anteriores como placeholder. **Descartado:** calcular o total no cliente (duplicaria a regra de dinheiro) ou mostrar a cotação anterior enquanto a nova carrega (mostraria um valor velho como se fosse o atual).
 - **D22, reconciliação no servidor (F3):** **problema:** preço e estoque mudam com o carrinho guardado. **Escolha:** toda leitura ou escrita do carrinho, a cotação e a junção reconciliam com o catálogo (remove esgotado, reduz quantidade, atualiza preço, retira cupom vencido) e gravam um aviso para cada ajuste. **Descartado:** ajustar no cliente ao receber `nft.updated`, que só funcionaria com a aba aberta e conectada.
 - **D23, junção idempotente (F3):** **escolha:** `POST /api/cart/merge` soma as quantidades da mesma edição, limita ao máximo atual e apaga o carrinho do visitante na mesma transação; o cliente só esquece o id depois da resposta. Repetir a chamada (nova tentativa, refresh, outra aba) não soma nada outra vez. O id juntado fica registrado (`mergedGuestCarts`, os 200 mais recentes); uma escrita de visitante que chegue depois com esse id recebe 409 `CART_MERGED` em vez de recriar um carrinho órfão. No cliente a junção é uma promessa única por conta e id (`mergePendingGuestCart`), fora do ciclo de vida da query: um `cancelQueries` rejeita a leitura, mas não a junção, e a próxima leitura reaproveita a mesma promessa. Antes de juntar, o cliente espera as escritas de visitante em voo; essas escritas não são abortadas pela troca de sessão (`keepOnSessionChange`) e a resposta tardia vira `SESSION_CHANGED`, sem tocar no cache. Mudanças do carrinho da conta esperam a junção pendente. **Descartado:** juntar no cliente com várias chamadas de adição, que duplicaria itens se uma resposta se perdesse; tirar o `cancelQueries` das mudanças, que deixaria leituras velhas sobrescreverem a resposta.
+- **D24, idempotência de pedido por usuário e chave (F4A):** **problema:** clique repetido e nova tentativa após timeout não podem criar dois pedidos. **Escolha:** `POST /api/orders` exige `Idempotency-Key`; o pedido guarda a chave e a impressão do corpo validado (JSON canônico dos campos). Na mesma transação, a chave já usada pelo mesmo usuário devolve o pedido existente (200, no estado atual) se o corpo for igual, ou 409 `IDEMPOTENCY_CONFLICT` se for outro. A chave só é gravada quando o pedido é criado: uma tentativa recusada (422, `QUOTE_STALE`) pode ser repetida com a mesma chave. Além disso, uma cotação só sustenta um pedido: outra chave com a mesma cotação recebe `QUOTE_STALE` (`quote-used`) com o `orderId` existente. **Descartado:** chave global (a chave de um usuário bloquearia a de outro e revelaria a existência de pedidos alheios); hash criptográfico do corpo (assíncrono, fora da transação síncrona, sem ganho no mock).
+- **D25, a cotação emitida é a referência do pedido (F4A):** **problema:** o cliente não pode ditar preços, e uma cotação velha não pode virar cobrança. **Escolha:** as cotações enviadas a uma conta ficam no banco (`issuedQuotes`, as 20 mais recentes, válidas por 10 min). O pedido manda só `quoteId`, `cartRevision`, carteira, rede e dados do colecionador. Na transação de criação, o servidor reconcilia o carrinho com o catálogo, recalcula os valores com as mesmas regras da cotação e compara com a cotação emitida; qualquer diferença (revisão, preço, quantidade, item, cupom), cotação vencida, desconhecida ou já usada responde 409 `QUOTE_STALE` com os motivos, as mudanças linha a linha, o total anterior e uma cotação nova já emitida, sem criar pedido nem tocar no estoque. **Descartado:** aceitar valores enviados pelo cliente; recusar toda mudança de `version` do NFT mesmo sem efeito no preço ou no estoque das linhas cotadas (exigiria reconfirmar valores idênticos).
+- **D26, estoque consumido na confirmação (F4A):** **problema:** o pedido pendente não pode apagar itens do carrinho nem prender estoque se o pagamento falhar. **Escolha:** o pedido nasce `pending` sem tocar em estoque ou carrinho. Na confirmação, na mesma transação: confere o estoque de novo (se faltar, o pedido vira `rejected` com `out-of-stock`), baixa o estoque, incrementa a versão dos NFTs (e emite `nft.updated`) e tira do carrinho só as quantidades compradas, por edição. Na recusa nada muda. **Descartado:** reservar estoque na criação, que faria a reconciliação do próprio carrinho do comprador reduzir as linhas que ele está pagando, e exigiria liberar a reserva na recusa e no abandono.
+- **D27, tentativa de compra persistida antes do envio (F4B):** **problema:** depois de um timeout o cliente não sabe se o pedido foi criado, e uma chave nova criaria um segundo pedido. **Escolha:** a chave (`crypto.randomUUID()`) e o corpo exato formam a tentativa, gravada nos rascunhos do usuário (`sessionStorage`, `checkout.attempt`) antes de a requisição sair. Timeout, falha de rede, 5xx e troca de sessão mantêm a tentativa; "Tentar enviar de novo" reenvia a mesma chave com o mesmo corpo. Um novo clique com o mesmo corpo também a reaproveita; um corpo diferente é outra tentativa, com outra chave. A tentativa só é apagada quando a resposta é conhecida (pedido, `QUOTE_STALE`, `IDEMPOTENCY_CONFLICT`, 422 ou outro erro final). Se outra chave chegar a uma cotação já usada, o `orderId` de `quote-used` leva ao pedido existente. **Descartado:** chave em memória (perdida no refresh, justamente quando a resposta se perdeu); chave nova a cada clique.
+- **D28, nova confirmação explícita após `QUOTE_STALE` (F4B):** **problema:** um pedido não pode ser criado com valores que o usuário não viu. **Escolha:** o 409 mostra os motivos, as mudanças linha a linha, o total anterior e o novo, esconde a revisão antiga e trava "Confirmar compra" até o usuário escolher "Revisar novos valores"; só então a revisão mostra a nova cotação (lida de novo do servidor) e um novo clique envia, com outra chave. **Descartado:** reenviar sozinho com a cotação que veio no erro.
+- **D29, conexão de carteira simulada e conferida antes do envio (F4B):** **problema:** o checkout pede conexão, recusa e desconexão, e não havia endpoints de carteira. **Escolha:** `GET /api/wallets` e `POST`/`GET`/`DELETE /api/wallets/:walletId/connection`, com a conexão em memória por usuário (como a sessão de um app de carteira) e o cenário `wallet: approve | reject`. Antes de cada envio, inclusive o reenvio, o cliente lê a conexão de novo e não envia se ela caiu. A API de pedidos (F4A) não mudou e não exige conexão. **Descartado:** exigir a conexão em `POST /orders`, que mudaria a API da F4A sem um ganho real (uma carteira real assinaria a transação, o que o mock não simula).
+- **D30, liquidação por timer de cada pedido (F4C):** **problema:** liquidar só na leitura deixava um pedido vencido `pending` até alguém consultá-lo, e ninguém seria avisado. **Escolha:** cada pedido pendente com prazo (`confirm`/`reject`) tem o seu `setTimeout` até `settlesAt`, criado junto com o pedido; ao iniciar, o mock rearma os timers de todos os pendentes gravados (um pedido criado antes de um refresh liquida na página seguinte). O disparo liquida numa transação; se ainda não venceu (relógio da página mudado), reagenda. A liquidação na leitura continua como rede de segurança e usa a mesma função, então a transição acontece uma vez, venha de onde vier. `hold` não tem timer. "Restaurar estado inicial" cancela os timers. **Descartado:** um intervalo global que varre os pedidos (roda mesmo sem pedidos e prende testes que esperam a página ociosa); liquidar no primeiro `order.updated` lido pelo cliente.
+- **D31, `order.updated` só para o dono, sem recibo (F4C):** **escolha:** depois de cada transição gravada (criação v1, liquidação v2), o servidor emite `order.updated` só para os sockets do dono (`emitToUser`), com `userId` e `version` no envelope e só `{ orderId, status }` no payload. O cliente descarta evento de outro usuário (provider) ou de outra sessão, deduplica por `eventId` e ignora `version` menor ou igual à do cache; um evento novo só invalida a query do pedido e a lista de pendentes, e o recibo vem do REST autenticado. O merge do REST também nunca troca uma versão maior por uma menor. **Descartado:** levar o pedido inteiro no evento (dados privados do recibo pelo socket e uma segunda fonte de verdade).
+- **D32, recuperação por leitura, nunca por reenvio (F4C):** **escolha:** `GET /api/orders?status=pending` traz os pendentes do usuário ao abrir o app; `GET /api/orders?idempotencyKey=` diz se a tentativa guardada já virou pedido. Uma tentativa que existia ao abrir o checkout é consultada por essa leitura: se o pedido existe, a tela leva a ele e apaga a tentativa; nada é reenviado sem o clique do usuário. Se o pedido liquida (e esvazia o carrinho) enquanto a resposta não chega, a tela continua mostrando a compra em andamento, e não "carrinho vazio". **Descartado:** reenviar a tentativa sozinho ao abrir a tela (um POST sem ação do usuário).
+- **D33, carteira validada no servidor; conexão não garantida (F4C):** **escolha:** `POST /api/orders` continua recusando (422) carteira de outro usuário ou inexistente e rede diferente da rede da carteira (inclusive rede sem carteira); o cliente não é a defesa. A conexão da carteira **não** é exigida pelo servidor: no mock ela é um estado que o próprio cliente liga sem prova (não há assinatura), então exigi-la seria uma garantia aparente. Fica documentada como limitação (seção 33). **Descartado:** checar a conexão em `POST /orders` como se fosse prova de posse da carteira.
 
 ## 9. Resultados da F0
 
@@ -419,7 +429,7 @@ Escritas de visitante (`POST /items`, `PATCH`, `DELETE`, cupom, avisos) com um i
 - **Dono do carrinho:** com `Authorization`, é a conta do token (o `userId` nunca vem do cliente); sem ele, o carrinho de visitante de `X-Cart-Id`. O id do visitante (`kurio:guest-cart` no `localStorage`) é criado só quando o visitante adiciona algo, então quem nunca usou o carrinho não deixa chave nem faz requisição; depois de um logout não sobra chave fora do mock (o teste de isolamento da F1 continua valendo).
 - **Persistência:** `cartsByUser`, `guestCarts` e `mergedGuestCarts` no banco simulado (seed versão 4), com integridade (edição pertence ao NFT, sem linha duplicada, dono existente, nenhum carrinho de visitante com id já juntado). Cupons no seed: `KURIO10` (10%, válido até 2030) e `EXPIRED` (20%, vencido em 2020). Um carrinho de visitante vazio nunca é gravado.
 - **Transação única:** cada escrita reconcilia, aplica a mudança e incrementa a revisão uma vez, tudo dentro de `transaction`. Uma escrita com erro não grava nada. A junção só incrementa a revisão da conta se algo mudou (linha nova, quantidade ou cupom herdado), e o aviso conta só as linhas adicionadas ou somadas.
-- **Cotação:** lê um único snapshot do banco; se a reconciliação for necessária, a transação revalida que o carrinho ainda existe e está na revisão pedida. Qualquer divergência é 409 `CART_CHANGED`, nunca erro 500.
+- **Cotação:** lê um único snapshot do banco; se a reconciliação for necessária, a transação revalida que o carrinho ainda existe e está na revisão pedida. Qualquer divergência é 409 `CART_CHANGED`, nunca erro 500. Desde a F4A, a cotação de uma conta é gravada (`issuedQuotes`), porque só ela pode sustentar um pedido (D25); a de visitante não.
 - **Mensagens:** os erros de limite dizem o motivo ("só restam 2 disponíveis" ou "o limite é de 3 por pedido") e trazem `fieldErrors.quantity`.
 
 ## 26. Dinheiro, cotação e cupom (F3)
@@ -484,9 +494,102 @@ Execuções locais em 15/10/2026, mesmo ambiente das fases anteriores:
 | R21 preço e disponibilidade com o carrinho aberto | Coberto | `cart.spec` (preço, estoque reduzido e esgotado) e `realtime-nft.spec` (socket bloqueado, reconexão, duplicado e antigo) |
 | R22 ETH decimal exato; quantidade inteira | Coberto | `cart.spec` (0.1 × 3 = 0.3; 10% = 0.03; total 0.286) |
 
-## 30. Limitações e pendências
+## 30. Pedidos: contratos e API (F4A)
 
-- Checkout, pedidos, perfil completo e carteiras continuam provisórios (F4 e F5). "Conectar e finalizar" leva ao `/checkout` provisório.
+**Contratos** (`src/contracts/orders.ts`, usados pelo mock e por `src/features/orders/api.ts`):
+
+- `CreateOrderRequest { quoteId, cartRevision, walletId, networkId, buyer: { fullName, email } }`. Nenhum valor monetário vem do cliente.
+- `Order { orderId, status, version, quoteId, createdAt, settledAt, rejection, receipt }`. Os estados são `pending`, `confirmed` e `rejected`. `version` é 1 na criação e 2 depois de liquidado; o `order.updated` a carrega (seção 32).
+- `Receipt { lines, itemCount, subtotalEth, discountEth, networkFeeEth, totalEth, coupon, buyer, wallet, network, transactionHash, explorerUrl }`. Cada linha guarda nome, token, arte, edição, quantidade, preço unitário e total.
+- `QuoteStaleDetails { reasons, changes, previousTotalEth, quote, orderId }`, em `error.details` do 409 `QUOTE_STALE`:
+  - `reasons`: `quote-not-found`, `quote-expired`, `quote-used` ou `cart-changed`.
+  - `changes`: `price-changed`, `quantity-changed`, `item-removed`, `item-added` ou `coupon-changed`, com valores anteriores e atuais e um rótulo legível.
+  - `quote`: a nova cotação já emitida, ou null se o carrinho ficou vazio.
+- O corpo de erro ganhou `details` opcional (genérico no envelope). Quem trata o código valida o conteúdo com o schema próprio (`quoteStaleDetails()`).
+
+| Método e rota | Sucesso | Erros principais |
+| --- | --- | --- |
+| `POST /api/orders` + `Idempotency-Key` | 201 `Order` (`pending`); 200 com o mesmo pedido para a mesma chave e corpo | 401; 409 `IDEMPOTENCY_CONFLICT`; 409 `QUOTE_STALE`; 409 `CONFLICT` (carrinho vazio); 422 (chave ausente ou inválida, corpo inválido, carteira que não é do usuário, rede diferente da rede da carteira) |
+| `GET /api/orders/:orderId` | 200 `Order` | 401; 403 `FORBIDDEN` (pedido de outra conta, sem nenhum dado dele); 404 |
+
+- **Validação na criação**, numa transação só:
+  - idempotência (D24);
+  - carteira do usuário e rede da carteira;
+  - reconciliação do carrinho com o catálogo;
+  - comparação com a cotação emitida (D25).
+  Uma falha não cria pedido, não baixa estoque e não mexe nos itens. A reconciliação fica gravada, como em qualquer leitura do carrinho (D22).
+- **Recibo imutável:** é montado na criação a partir dos valores revalidados e gravado inteiro no pedido. Leituras posteriores devolvem o recibo gravado, nunca recalculado. O hash da transação é aleatório, e o link aponta para o explorador da rede (`/tx/<hash>`); os dois são simulados.
+- **Pagamento simulado:** o cenário ganhou `payment`: `confirm` (padrão), `reject` ou `hold`.
+  - Com `confirm` e `reject`, o pedido liquida 1,5 s depois da criação, pelo timer do pedido (D30), lido ou não; uma leitura depois do prazo também liquida, e isso sobrevive ao refresh da página que hospeda o mock.
+  - Com `hold`, o pedido fica pendente até `POST /__mock/orders/:orderId/resolve`.
+- **Transições:** só `pending → confirmed` e `pending → rejected`, uma vez (D26). Uma liquidação tardia ou repetida não muda nada, e o controle responde 409.
+- **Carrinho:** fica intacto enquanto o pedido está pendente e quando é recusado. Na confirmação saem só as quantidades compradas de cada edição: unidades acrescentadas depois e outros itens ficam, e o cupom só sai se o carrinho esvaziar.
+- **Fora da F4A:** a tela de pagamento (F4B, seção 31), o `order.updated` e a liquidação por timer (F4C, seção 32).
+- **Testes:** `e2e/orders-api.spec.ts` (6 testes por projeto), pela API e pelos handlers MSW:
+  - **Idempotência:** chave ausente, mesma chave em quatro envios (três em paralelo), corpo diferente e cotação reaproveitada.
+  - **Cotação desatualizada:** preço e estoque mudados, com as mudanças linha a linha, nenhum pedido criado, estoque e carrinho preservados, e a nova confirmação funcionando.
+  - **Cotação inválida:** desconhecida, revisão errada, vencida (relógio da página avançado 11 min), além de rede e carteira inválidas.
+  - **Isolamento:** 403 para outra conta, 401 sem sessão, 404, cotação alheia recusada e a mesma chave valendo por usuário.
+  - **Confirmação:** remove só o comprado, baixa o estoque, mantém o recibo depois de mudança de preço e não regride.
+  - **Recusa:** pelo cenário e por falta de estoque, preservando carrinho e estoque.
+
+## 31. Checkout (F4B)
+
+- **Tela** (`/checkout`, `src/features/checkout`): título "Pagamento" sempre visível; no desktop, trilha "Início / Carrinho / Pagamento" e duas colunas (formulário à esquerda, revisão à direita, fixa ao rolar); no mobile, botão voltar e uma coluna só. Carrinho vazio mostra o aviso com link para o catálogo.
+- **Formulário:** nome completo e e-mail (preenchidos com os dados da conta e guardados como rascunho por usuário), rede e carteira. Valida com `buyerSchema`, o mesmo schema da API; os erros ficam abaixo de cada campo (`aria-invalid` + `aria-describedby`), o foco vai ao primeiro inválido e os outros valores ficam. Erros 422 da API (`buyer.fullName`, `buyer.email`, `walletId`, `networkId`) voltam para os mesmos campos.
+- **Rede e carteira:** as redes vêm do contrato; uma rede sem carteira cadastrada fica desabilitada ("Nenhuma carteira cadastrada"). A rede inicial é a da carteira principal, e só aparecem as carteiras da rede escolhida. A conexão mostra verificando, aguardando aprovação, conectada, não conectada, recusada (cenário `wallet: reject`) e permite desconectar (D29).
+- **Revisão:** linhas e valores são a cotação do servidor para a revisão do carrinho na tela (`useQuote` da F3), sem nenhuma conta no cliente; enquanto não há cotação atual os valores ficam ocultos e o envio, travado. O corpo enviado é `{ quoteId, cartRevision, walletId, networkId, buyer }`.
+- **Envio:** trava por `ref` e estado (`aria-disabled`, o foco fica no botão); cliques e Enter repetidos não geram outra requisição. Tentativa e reenvio seguem D27. Respostas:
+  - pedido (201 ou 200): vai para `/orders/:orderId` com o pedido já no cache;
+  - timeout, rede ou 5xx: aviso de que o pedido pode ter sido registrado, com "Tentar enviar de novo" (mesma chave e corpo); uma tentativa que sobrou de antes (refresh) é consultada ao abrir a tela (D32): leva ao pedido se ele existe, senão mostra o mesmo aviso;
+  - `IDEMPOTENCY_CONFLICT`: mensagem recuperável, sem sucesso; o próximo envio usa outra chave;
+  - `QUOTE_STALE`: D28; com `quote-used` e `orderId`, vai para o pedido existente.
+- **Página do pedido** (`/orders/:orderId`): completada na F4C (seção 32).
+- **Figma:** o MCP do Figma respondeu sem permissão de acesso ao arquivo nesta etapa, então os frames de pagamento não puderam ser conferidos campo a campo. A tela segue os padrões do carrinho (trilha, cabeçalho mobile, cartão de resumo, botões) e os rótulos já usados no app ("Conectar e finalizar", "Principal"/"Reserva"). **Lacuna registrada:** os dados do colecionador ficaram em nome e e-mail (o contrato da F4A), sem campos que não puderam ser confirmados; a ordem e o texto exatos do frame precisam ser revistos quando houver acesso.
+- **Testes:** `e2e/checkout.spec.ts` (7 testes por projeto, desktop e mobile): checkout válido até o pedido pendente e depois confirmado; campos inválidos; seleção de rede e carteira, recusa, desconexão e queda da conexão; cliques repetidos com um só POST; timeout com reenvio da mesma chave (resposta retida 10 s, latência de 800 ms) e o mesmo pedido; `QUOTE_STALE` com nova confirmação; pedido pendente que continua pendente e depois recusado.
+
+## 32. Ciclo de vida do pedido (F4C)
+
+- **Liquidação** (`src/mocks/api/orders.ts`): timer por pedido, rearmado ao iniciar o mock, com a leitura como rede de segurança (D30). `confirm` e `reject` são determinísticos (1,5 s); `hold` só termina por `POST /__mock/orders/:orderId/resolve`. Transições terminais são imutáveis: uma segunda liquidação responde 409 e não emite nada.
+- **`order.updated`** (D31): emitido depois de gravar a criação (v1) e a liquidação (v2), para os sockets do dono. Na confirmação, o `nft.updated` do estoque sai antes. O mock guarda os dois últimos eventos de cada pedido para `POST /__mock/orders/:orderId/replay` (`duplicate`: o mesmo `eventId`; `stale`: o evento anterior com `eventId` novo; `delivery: broadcast` simula um erro de roteamento).
+- **Leitura de pedidos:** `GET /api/orders` (`?status=`, `?idempotencyKey=`, os 20 mais recentes do usuário, liquidando os vencidos antes de responder; 401 sem sessão, 422 com filtro inválido).
+- **No cliente** (`src/features/orders`):
+  - A query de cada pedido é marcada para reconciliar ao reconectar; o `queryFn` nunca troca uma versão maior pela resposta de uma menor (`newestOrder`).
+  - `OrderNotices` (no layout raiz) busca os pendentes da sessão ao abrir o app e mostra um aviso por pedido acompanhado (pendente, confirmado com "Ver recibo", recusado), em `role="status"`. O ouvinte de `order.updated` só existe enquanto há pedido acompanhado ou uma página de pedido aberta, para não manter inscrição sem uso. O componente é remontado a cada sessão (`epoch:userId`): nada de um usuário sobra para o próximo.
+  - Ao reconectar depois de uma queda, a lista de pendentes e os pedidos abertos são refeitos pelo REST: uma liquidação cujo evento se perdeu aparece assim.
+- **Checkout e tentativa guardada** (D32): ao abrir, uma tentativa que sobrou é consultada por `idempotencyKey`. Se o pedido existe, o aviso "O pedido desta compra já tinha sido registrado; nada foi enviado de novo" leva a ele; se o carrinho já esvaziou (pedido confirmado), o mesmo aviso aparece no lugar de "carrinho vazio".
+- **Página do pedido** (`/orders/:orderId`): `data-status` e `data-version` na seção; ao mudar de estado, o título recebe o foco e a mudança é anunciada.
+  - **Pendente:** "Pagamento em processamento", diz que a compra ainda não foi confirmada e que a página se atualiza sozinha; "Atualizar status" continua como ação manual. Mostra o resumo do pedido, sem transação.
+  - **Recusado:** "Pagamento recusado", o motivo, que nada foi cobrado, e "Voltar ao carrinho".
+  - **Confirmado:** "Pedido confirmado" e o recibo: linhas (arte, nome, edição, token, quantidade × preço unitário, total), subtotal, desconto com o cupom, taxa de rede, total, pedido, data, colecionador, carteira, rede e a referência da transação. Tudo vem do recibo gravado na criação, nunca do catálogo atual.
+  - **Explorador:** "Ver transação no explorador" abre um diálogo "Transação simulada" que diz que nada foi registrado na rede e mostra a URL simulada como texto, sem link.
+  - 403 e 404 mostram "Pedido não encontrado", sem nenhum dado do pedido.
+- **Testes:** `e2e/order-lifecycle.spec.ts` (7 testes por projeto):
+  - liquidação sem nenhuma leitura (confirm, reject, hold e resolve, terminal imutável, pedido criado antes de a página fechar);
+  - recibo atualizado pelo evento, com todos os campos conferidos contra a cotação, o diálogo do explorador, evento duplicado e antigo sem efeito e sem leitura, recibo igual depois de mudar o preço;
+  - pedido pendente depois do refresh e no aviso global, liquidação com o socket bloqueado e reconciliação ao reconectar;
+  - refresh com a resposta perdida: o pedido é encontrado pela chave, sem novo POST, com o pedido pendente e com o pedido já confirmado (carrinho vazio);
+  - troca de usuário: Bruno não vê aviso nem pedido de Ana, e um evento de Ana enviado a todos é descartado;
+  - carteira de outro usuário, inexistente, de outra rede e rede sem carteira: 422 sem pedido e sem mexer no carrinho.
+
+  `e2e/checkout.spec.ts` passou a esperar a confirmação pelo evento, em vez de tocar em "Atualizar status".
+
+## 33. Limitações e pendências
+
+- Perfil completo e gestão de carteiras continuam provisórios (F5). O checkout e a página do pedido existem (seções 31 e 32); não há lista de pedidos do usuário.
+- **Checkout (F4B):**
+  - A conexão da carteira fica na memória do mock: recarregar a página desconecta, e o usuário conecta de novo. O reenvio de uma tentativa recuperada depois do refresh pede a conexão antes de sair.
+  - O servidor não exige a conexão da carteira para criar o pedido (D29, D33): no mock a conexão não prova a posse da carteira, porque não há assinatura. Uma integração real deve exigir a transação assinada pela carteira e conferi-la no servidor.
+  - Campos do frame de pagamento não confirmados no Figma (seção 31).
+- **Ciclo de vida (F4C):**
+  - Os timers vivem na aba que hospeda o mock. Com várias abas, cada uma arma os seus; a transação no banco garante uma só transição, mas o evento sai da aba que liquidou, e os sockets de outras abas não o recebem (limitação das abas, abaixo). A outra aba vê a mudança ao refazer as queries.
+  - Sem nenhuma aba aberta, nada liquida; o pedido vencido liquida quando o mock iniciar de novo.
+  - Os avisos de pedido acompanham os pendentes vistos nesta sessão da aba; um pedido liquidado antes de o app abrir não gera aviso (não há histórico de pedidos).
+  - O hash e a URL do explorador são simulados; nenhuma transação existe na rede.
+- **Pedidos (F4A):**
+  - A rede do pedido é a da carteira escolhida; a rede de cada NFT não é verificada.
+  - Um usuário com pedido pendente pode cotar e pedir de novo os mesmos itens (é outra compra); se o estoque não bastar na confirmação, o segundo pedido é recusado com `out-of-stock`.
+  - O recibo guarda o nome e o endereço da carteira no momento da compra: editar a carteira depois não muda o recibo.
 - A taxa de rede é uma estimativa fixa (0.016 ETH); uma rede real cotaria o gas.
 - O carrinho de visitante fica no banco simulado do navegador; "Restaurar estado inicial" apaga os carrinhos, e o id local passa a apontar para um carrinho vazio até a próxima adição.
 - Um carrinho de visitante abandonado nunca expira no mock.
@@ -503,6 +606,6 @@ Execuções locais em 15/10/2026, mesmo ambiente das fases anteriores:
 - Cada aba tem seu próprio servidor simulado. As abas compartilham o banco pelo `localStorage`, mas um evento emitido numa aba não chega aos sockets de outra.
 - Com o modal de autenticação aberto no desktop, o painel da demonstração fica inerte (D12).
 - A nova tentativa após falha do `import()` depende de o navegador refazer a importação de um módulo que falhou. O Chromium faz isso (verificado no teste); navegadores que guardam a falha no mapa de módulos só se recuperariam com recarga da página.
-- **403:** o cliente trata `FORBIDDEN` como erro de autorização (mensagem própria, sem encerrar a sessão), mas nenhuma rota da F1 responde 403: todas as rotas privadas são do próprio usuário, identificado pelo token. O primeiro caso real de 403 (recurso de outro usuário, como um pedido) e o teste correspondente entram na F4.
+- **403:** o cliente trata `FORBIDDEN` como erro de autorização (mensagem própria, sem encerrar a sessão). O único caso real é o pedido de outra conta (F4A), que a página do pedido mostra como "Pedido não encontrado" (testado na F4C).
 - O motivo do fim da sessão não é compartilhado entre abas: se a sessão expira numa aba, a outra trata como logout (vai para a home e descarta os rascunhos daquela aba).
 - Recuperação de senha e login social não existem na demonstração.
