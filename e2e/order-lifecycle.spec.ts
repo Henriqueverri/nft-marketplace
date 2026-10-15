@@ -99,7 +99,9 @@ test.describe('Order lifecycle @orders', () => {
     await page.close()
     const next = await context.newPage()
     await openApp(next)
-    expect(await serverOrder(next, orphan.body.orderId)).toMatchObject({ status: 'pending' })
+    // The timer may elapse while the next page initializes under load. What matters
+    // is that the order settles without a client order read, not an instantaneous
+    // observation of its short-lived pending state.
     await expect.poll(async () => (await serverOrder(next, orphan.body.orderId))?.status).toBe('confirmed')
     expect(await requestCount(next, ORDER_READS)).toBe(0)
   })

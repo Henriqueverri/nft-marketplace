@@ -1,9 +1,16 @@
 import { http, HttpResponse } from 'msw'
-import { walletSchema, type WalletConnection, type WalletList } from '@/contracts/wallets'
-import { readDb } from '../db/database'
+import {
+  upsertWalletRequestSchema,
+  walletSchema,
+  walletSlotSchema,
+  type Wallet,
+  type WalletConnection,
+  type WalletList,
+} from '@/contracts/wallets'
+import { readDb, transaction } from '../db/database'
 import { withNetwork } from '../network'
 import { getScenario } from '../scenarios'
-import { apiError } from './respond'
+import { apiError, readJson, validationError } from './respond'
 import { requireSession } from './session'
 
 /**
@@ -50,6 +57,63 @@ export const walletHandlers = [
       if (!auth.ok) return auth.response
       const db = await readDb()
       return HttpResponse.json<WalletList>({ wallets: db.walletsByUser[auth.user.id] ?? [] })
+    }),
+  ),
+
+  http.put(
+    '/api/wallets/:slot',
+    withNetwork(async ({ request, params }) => {
+      const auth = await requireSession(request)
+      if (!auth.ok) return auth.response
+      const slot = walletSlotSchema.safeParse(params.slot)
+      if (!slot.success) return apiError('NOT_FOUND', 'Slot de carteira não encontrado.')
+      const parsed = upsertWalletRequestSchema.safeParse(await readJson(request))
+      if (!parsed.success) return validationError(parsed.error)
+      if (parsed.data.sameAsPrimary && slot.data !== 'secondary') {
+        return apiError('VALIDATION_FAILED', 'Somente a carteira secundária pode ser igual à principal.', {
+          sameAsPrimary: ['Opção indisponível para a carteira principal.'],
+        })
+      }
+
+      const result = await transaction((draft): Wallet | null => {
+        const wallets = (draft.walletsByUser[auth.user.id] ??= [])
+        const existing = wallets.find((wallet) => wallet.slot === slot.data)
+        const primary = wallets.find((wallet) => wallet.slot === 'primary')
+        if (parsed.data.sameAsPrimary && !primary) return null
+        const fields = parsed.data.sameAsPrimary
+          ? {
+              displayName: primary!.displayName,
+              nickname: primary!.nickname,
+              networkId: primary!.networkId,
+              address: primary!.address,
+              provider: primary!.provider,
+              ensName: primary!.ensName,
+            }
+          : {
+              displayName: parsed.data.displayName,
+              nickname: parsed.data.nickname,
+              networkId: parsed.data.networkId,
+              address: parsed.data.address,
+              provider: parsed.data.provider,
+              ensName: parsed.data.ensName,
+            }
+        const wallet: Wallet = {
+          id:
+            existing?.id ??
+            `wal_${auth.user.id.replace(/^usr_/, '').replace(/[^a-z0-9]/g, '').slice(0, 12)}${slot.data === 'primary' ? 'p' : 's'}`,
+          slot: slot.data,
+          ...fields,
+        }
+        if (existing) Object.assign(existing, wallet)
+        else wallets.push(wallet)
+        return wallet
+      })
+      if (!result) {
+        return apiError('VALIDATION_FAILED', 'Cadastre a carteira principal antes de copiar seus dados.', {
+          sameAsPrimary: ['Cadastre a carteira principal primeiro.'],
+        })
+      }
+      return HttpResponse.json(result)
     }),
   ),
 

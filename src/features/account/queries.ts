@@ -1,8 +1,9 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { AccountProfile, UpdateProfileRequest } from '@/contracts/account'
+import type { AccountProfile, UpdateAvatarRequest, UpdateProfileRequest } from '@/contracts/account'
+import type { ChangePasswordRequest, CurrentSession } from '@/contracts/auth'
 import { useRealtimeEvent } from '@/shared/realtime/context'
-import { privateQueryKey } from '@/shared/session/query-keys'
-import { fetchProfile, updateProfile } from './api'
+import { privateQueryKey, sessionQueryKey } from '@/shared/session/query-keys'
+import { changePassword, fetchProfile, updateAvatar, updateProfile } from './api'
 
 export const accountKeys = {
   profile: (userId: string) => privateQueryKey(userId, 'profile'),
@@ -41,6 +42,26 @@ export function useUpdateProfile(userId: string) {
       queryClient.setQueryData<AccountProfile>(accountKeys.profile(userId), (current) =>
         newest(current, profile),
       )
+      queryClient.setQueryData<CurrentSession>(sessionQueryKey, (current) =>
+        current ? { ...current, user: { ...current.user, displayName: profile.displayName } } : current,
+      )
     },
   })
+}
+
+export function useUpdateAvatar(userId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: UpdateAvatarRequest) => updateAvatar(body),
+    onSuccess: (profile) => {
+      queryClient.setQueryData<AccountProfile>(accountKeys.profile(userId), (current) => newest(current, profile))
+      queryClient.setQueryData<CurrentSession>(sessionQueryKey, (current) =>
+        current ? { ...current, user: { ...current.user, avatarUrl: profile.avatarUrl } } : current,
+      )
+    },
+  })
+}
+
+export function useChangePassword() {
+  return useMutation({ mutationFn: (body: ChangePasswordRequest) => changePassword(body) })
 }

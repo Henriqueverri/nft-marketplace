@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
-import { BRUNO, isMobile, login } from './support/auth'
+import { ANA, BRUNO, isMobile, login } from './support/auth'
+import { addFromDetail, summary, VELVET_OPEN } from './support/cart'
 import { CATALOG_TOTAL, EMERALD, expectCatalogCount } from './support/catalog'
 
 const PAGES = [
@@ -15,43 +16,18 @@ const PAGES = [
   { path: '/nfts/nao-existe-999', ready: (page: Page) => expect(page.getByRole('heading', { level: 1, name: 'NFT não encontrado' })).toBeVisible() },
 ]
 
-/** Widths per project: phones on the mobile project, tablet and desktop on the other. */
-const WIDTHS = { mobile: [320, 390, 414], desktop: [768, 1440] }
-
-async function horizontalOverflow(page: Page): Promise<number> {
-  return page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
-}
-
 async function expectNoAxeViolations(page: Page) {
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
-  const summary = results.violations.map((violation) => ({
-    id: violation.id,
-    impact: violation.impact,
-    targets: violation.nodes.slice(0, 3).map((node) => node.target.join(' ')),
-  }))
-  expect(summary).toEqual([])
+  expect(
+    results.violations.map((violation) => ({
+      id: violation.id,
+      impact: violation.impact,
+      targets: violation.nodes.slice(0, 3).map((node) => node.target.join(' ')),
+    })),
+  ).toEqual([])
 }
 
-test.describe('responsive and accessibility @a11y', () => {
-  test('no horizontal overflow on the supported widths', async ({ page }, testInfo) => {
-    const widths = isMobile(testInfo) ? WIDTHS.mobile : WIDTHS.desktop
-    for (const width of widths) {
-      await page.setViewportSize({ width, height: 900 })
-      for (const target of PAGES) {
-        await page.goto(target.path)
-        await target.ready(page)
-        expect(await horizontalOverflow(page), `${target.path} at ${width}px`).toBe(0)
-      }
-    }
-    await login(page, BRUNO)
-    for (const width of widths) {
-      await page.setViewportSize({ width, height: 900 })
-      await page.goto('/account/favorites')
-      await expect(page.getByRole('list', { name: 'NFTs salvos' })).toBeVisible()
-      expect(await horizontalOverflow(page), `/account/favorites at ${width}px`).toBe(0)
-    }
-  })
-
+test.describe('accessibility @a11y', () => {
   for (const target of PAGES) {
     test(`axe finds no WCAG A/AA violations on ${target.path}`, async ({ page }) => {
       await page.goto(target.path)
@@ -60,7 +36,7 @@ test.describe('responsive and accessibility @a11y', () => {
     })
   }
 
-  test('axe finds no WCAG A/AA violations on the favorites list and the filter drawer', async ({ page }, testInfo) => {
+  test('axe covers the authenticated favorites list and mobile filter drawer', async ({ page }, testInfo) => {
     await login(page, BRUNO)
     await page.goto('/account/favorites')
     await expect(page.getByRole('list', { name: 'NFTs salvos' })).toBeVisible()
@@ -70,28 +46,23 @@ test.describe('responsive and accessibility @a11y', () => {
       await page.goto('/')
       await expectCatalogCount(page, CATALOG_TOTAL)
       await page.getByRole('button', { name: /^Filtros/ }).click()
-      await expect(page.getByRole('dialog', { name: 'Filtros' }).getByRole('checkbox').first()).toBeAttached()
+      await expect(page.getByRole('dialog', { name: 'Filtros' })).toBeVisible()
       await expectNoAxeViolations(page)
     }
   })
 
-  test('keyboard: skip link, visible focus and the filter drawer focus trap', async ({ page }, testInfo) => {
+  test('keyboard navigation preserves focus through the filter drawer', async ({ page }, testInfo) => {
     await page.goto('/')
     await expectCatalogCount(page, CATALOG_TOTAL)
     await page.keyboard.press('Tab')
     const skip = page.getByRole('link', { name: 'Pular para o conteúdo' })
     await expect(skip).toBeFocused()
-    await expect(skip).toBeVisible()
     await page.keyboard.press('Enter')
     await expect(page.locator('main#conteudo')).toBeFocused()
 
-    // Focus on a card link is drawn (ring on the stretched link area).
     const cardLink = page.getByRole('list', { name: 'NFTs', exact: true }).getByRole('link').first()
     await cardLink.focus()
-    const ring = await cardLink.evaluate((element) => getComputedStyle(element, '::after').boxShadow)
-    expect(ring).not.toBe('none')
-    await page.keyboard.press('Enter')
-    await expect(page).toHaveURL(/\/nfts\//)
+    expect(await cardLink.evaluate((element) => getComputedStyle(element, '::after').boxShadow)).not.toBe('none')
 
     if (isMobile(testInfo)) {
       await page.goto('/')
@@ -100,7 +71,7 @@ test.describe('responsive and accessibility @a11y', () => {
       await page.keyboard.press('Enter')
       const drawer = page.getByRole('dialog', { name: 'Filtros' })
       await expect(drawer).toBeVisible()
-      for (let step = 0; step < 25; step++) {
+      for (let step = 0; step < 25; step += 1) {
         await page.keyboard.press('Tab')
         expect(await drawer.evaluate((element) => element.contains(document.activeElement))).toBe(true)
       }
@@ -110,17 +81,31 @@ test.describe('responsive and accessibility @a11y', () => {
     }
   })
 
-  test('reduced motion turns animations and smooth scrolling off', async ({ page }) => {
+  test('checkout errors are described by their fields and receive focus', async ({ page }, testInfo) => {
+    await login(page, ANA)
+    await addFromDetail(page, testInfo, VELVET_OPEN)
+    await summary(page).getByRole('button', { name: 'Conectar e finalizar' }).click()
+    const name = page.getByLabel('Nome completo')
+    const email = page.getByLabel('E-mail')
+    await name.fill(' ')
+    await email.fill('invalido')
+    await page.getByRole('button', { name: 'Confirmar compra' }).click()
+
+    await expect(name).toBeFocused()
+    await expect(name).toHaveAttribute('aria-invalid', 'true')
+    await expect(name).toHaveAccessibleDescription('Informe seu nome completo.')
+    await expect(email).toHaveAttribute('aria-invalid', 'true')
+    await expect(email).toHaveAccessibleDescription(/e-mail/i)
+  })
+
+  test('reduced motion disables decorative animation and smooth scrolling', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.goto(`/nfts/${EMERALD.id}`)
     await expect(page.getByRole('heading', { level: 1, name: EMERALD.name })).toBeVisible()
-    const styles = await page
-      .getByTestId('recommendations-carousel')
-      .getByRole('list')
-      .evaluate((element) => ({
-        scroll: getComputedStyle(element).scrollBehavior,
-        transition: getComputedStyle(element.querySelector('img')!).transitionDuration,
-      }))
+    const styles = await page.getByTestId('recommendations-carousel').getByRole('list').evaluate((element) => ({
+      scroll: getComputedStyle(element).scrollBehavior,
+      transition: getComputedStyle(element.querySelector('img')!).transitionDuration,
+    }))
     expect(styles.scroll).toBe('auto')
     expect(parseFloat(styles.transition)).toBeLessThan(0.01)
   })

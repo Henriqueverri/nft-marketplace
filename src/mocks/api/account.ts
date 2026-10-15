@@ -1,11 +1,17 @@
 import { http, HttpResponse } from 'msw'
-import { updateProfileRequestSchema, type AccountProfile } from '@/contracts/account'
+import {
+  updateAvatarRequestSchema,
+  updateProfileRequestSchema,
+  type AccountProfile,
+} from '@/contracts/account'
+import { changePasswordRequestSchema } from '@/contracts/auth'
 import type { ProfileUpdatedEvent } from '@/contracts/events'
-import { transaction } from '../db/database'
+import { readDb, transaction } from '../db/database'
+import { hashPassword, verifyPassword } from '../db/password'
 import type { UserRecord } from '../db/schema'
 import { withNetwork } from '../network'
 import { createEnvelope, emitToUser } from '../socket'
-import { readJson, validationError } from './respond'
+import { apiError, readJson, validationError } from './respond'
 import { requireSession } from './session'
 
 export function toAccountProfile(user: UserRecord): AccountProfile {
@@ -42,7 +48,7 @@ export async function updateDisplayName(userId: string, displayName: string): Pr
 
 export const accountHandlers = [
   http.get(
-    '/api/account/profile',
+    '/api/me',
     withNetwork(async ({ request }) => {
       const auth = await requireSession(request)
       if (!auth.ok) return auth.response
@@ -51,7 +57,7 @@ export const accountHandlers = [
   ),
 
   http.patch(
-    '/api/account/profile',
+    '/api/me',
     withNetwork(async ({ request }) => {
       const auth = await requireSession(request)
       if (!auth.ok) return auth.response
@@ -61,6 +67,49 @@ export const accountHandlers = [
       const profile = await updateDisplayName(auth.user.id, parsed.data.displayName)
       await emitToUser(profile.id, 'profile.updated', profileUpdatedEvent(profile))
       return HttpResponse.json(profile)
+    }),
+  ),
+
+  http.put(
+    '/api/me/avatar',
+    withNetwork(async ({ request }) => {
+      const auth = await requireSession(request)
+      if (!auth.ok) return auth.response
+      const parsed = updateAvatarRequestSchema.safeParse(await readJson(request))
+      if (!parsed.success) return validationError(parsed.error)
+
+      const profile = await transaction((draft) => {
+        const user = draft.users.find((candidate) => candidate.id === auth.user.id)!
+        user.avatarUrl = parsed.data.avatarUrl
+        user.profileVersion += 1
+        return toAccountProfile(user)
+      })
+      await emitToUser(profile.id, 'profile.updated', profileUpdatedEvent(profile))
+      return HttpResponse.json(profile)
+    }),
+  ),
+
+  http.post(
+    '/api/me/password',
+    withNetwork(async ({ request }) => {
+      const auth = await requireSession(request)
+      if (!auth.ok) return auth.response
+      const parsed = changePasswordRequestSchema.safeParse(await readJson(request))
+      if (!parsed.success) return validationError(parsed.error)
+
+      const db = await readDb()
+      const current = db.credentials.find((credential) => credential.userId === auth.user.id)
+      if (!current || !(await verifyPassword(parsed.data.currentPassword, current))) {
+        return apiError('VALIDATION_FAILED', 'A senha atual está incorreta.', {
+          currentPassword: ['A senha atual está incorreta.'],
+        })
+      }
+      const next = await hashPassword(parsed.data.newPassword)
+      await transaction((draft) => {
+        const credential = draft.credentials.find((candidate) => candidate.userId === auth.user.id)!
+        Object.assign(credential, next)
+      })
+      return new HttpResponse(null, { status: 204 })
     }),
   ),
 ]

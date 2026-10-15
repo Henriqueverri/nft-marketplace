@@ -104,7 +104,7 @@ test.describe('session isolation @isolation', () => {
     }, ANA.email)
 
     // Ana's profile request is now in flight for 2s...
-    const anaProfile = page.waitForRequest((r) => r.url().endsWith('/api/account/profile'))
+    const anaProfile = page.waitForRequest((r) => r.url().endsWith('/api/me'))
     await page.getByRole('link', { name: 'Meu perfil' }).click()
     await anaProfile
     // ...when the other tab switches the browser session to Bruno.
@@ -177,6 +177,9 @@ test.describe('session isolation @isolation', () => {
     await login(page, BRUNO)
     await openProfileFromHeader(page)
     await expect(page.getByTestId('realtime-identity')).toHaveText(BRUNO.id)
+    // The catalog always subscribes once; the second subscription confirms that
+    // ProfilePage's effect is ready before an event is emitted.
+    await expect(page.getByTestId('realtime-subscriptions')).toHaveText('2')
 
     // Simulated routing bug: Ana's private event is broadcast to every connection.
     const leaked = await callMockControl<{ delivered: number }>(page, `/__mock/users/${ANA.id}/profile`, 'POST', {

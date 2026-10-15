@@ -30,7 +30,7 @@ export const accountUserSchema = publicUserSchema.extend({
 export type AccountUser = z.infer<typeof accountUserSchema>
 
 /**
- * Private profile, readable only by its owner (GET /api/account/profile).
+ * Private profile, readable only by its owner (GET /api/me).
  * `version` grows on every change; realtime events carry it so stale updates are ignored.
  */
 export const accountProfileSchema = accountUserSchema.extend({
@@ -41,8 +41,19 @@ export const accountProfileSchema = accountUserSchema.extend({
 })
 export type AccountProfile = z.infer<typeof accountProfileSchema>
 
-/** PATCH /api/account/profile. F1 edits the display name; F5 extends this schema. */
+/** PATCH /api/me. Only fields present in the known profile layout are writable. */
 export const updateProfileRequestSchema = z.object({
   displayName: displayNameSchema,
 })
 export type UpdateProfileRequest = z.infer<typeof updateProfileRequestSchema>
+
+const avatarDataUrlSchema = z
+  .string()
+  .max(500_000, 'A imagem é grande demais.')
+  .regex(/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/, 'Envie uma imagem PNG, JPEG ou WebP.')
+
+/** PUT /api/me/avatar. `null` removes the current avatar. */
+export const updateAvatarRequestSchema = z.object({
+  avatarUrl: avatarDataUrlSchema.nullable(),
+})
+export type UpdateAvatarRequest = z.infer<typeof updateAvatarRequestSchema>

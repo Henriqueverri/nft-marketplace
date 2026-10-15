@@ -1,8 +1,20 @@
-import { walletConnectionSchema, walletListSchema, type Wallet, type WalletConnection } from '@/contracts/wallets'
+import {
+  walletConnectionSchema,
+  walletListSchema,
+  walletSchema,
+  type UpsertWalletRequest,
+  type Wallet,
+  type WalletConnection,
+  type WalletSlot,
+} from '@/contracts/wallets'
 import { http, parseResponse } from '@/shared/api/http'
 
 export async function fetchWallets(signal?: AbortSignal): Promise<Wallet[]> {
   return parseResponse(walletListSchema, (await http.get('/wallets', { signal })).data).wallets
+}
+
+export async function upsertWallet(slot: WalletSlot, body: UpsertWalletRequest): Promise<Wallet> {
+  return parseResponse(walletSchema, (await http.put(`/wallets/${slot}`, body)).data)
 }
 
 const connectionPath = (walletId: string) => `/wallets/${encodeURIComponent(walletId)}/connection`

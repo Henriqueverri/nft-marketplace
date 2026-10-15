@@ -11,7 +11,7 @@ const publicRoutes = [
   { path: '/cart', heading: 'Carrinho de NFTs' },
 ]
 
-const privateRoutes = ['/checkout', '/orders/order-123', '/account/profile', '/account/wallets', '/account/favorites']
+const privateRoutes = ['/checkout', '/orders/order-123', '/account/profile', '/account/wallets', '/account/orders', '/account/favorites']
 
 test.describe('smoke @smoke', () => {
   test('opens the home route', async ({ page }) => {

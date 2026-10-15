@@ -17,6 +17,7 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as AuthenticatedCheckoutRouteImport } from './routes/_authenticated/checkout'
 import { Route as NftsNftIdRouteImport } from './routes/nfts.$nftId'
 import { Route as AuthenticatedAccountFavoritesRouteImport } from './routes/_authenticated/account.favorites'
+import { Route as AuthenticatedAccountOrdersRouteImport } from './routes/_authenticated/account.orders'
 import { Route as AuthenticatedAccountProfileRouteImport } from './routes/_authenticated/account.profile'
 import { Route as AuthenticatedAccountWalletsRouteImport } from './routes/_authenticated/account.wallets'
 import { Route as AuthenticatedOrdersOrderIdRouteImport } from './routes/_authenticated/orders.$orderId'
@@ -61,6 +62,12 @@ const AuthenticatedAccountFavoritesRoute =
     path: '/account/favorites',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedAccountOrdersRoute =
+  AuthenticatedAccountOrdersRouteImport.update({
+    id: '/account/orders',
+    path: '/account/orders',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedAccountProfileRoute =
   AuthenticatedAccountProfileRouteImport.update({
     id: '/account/profile',
@@ -88,6 +95,7 @@ export interface FileRoutesByFullPath {
   '/checkout': typeof AuthenticatedCheckoutRoute
   '/nfts/$nftId': typeof NftsNftIdRoute
   '/account/favorites': typeof AuthenticatedAccountFavoritesRoute
+  '/account/orders': typeof AuthenticatedAccountOrdersRoute
   '/account/profile': typeof AuthenticatedAccountProfileRoute
   '/account/wallets': typeof AuthenticatedAccountWalletsRoute
   '/orders/$orderId': typeof AuthenticatedOrdersOrderIdRoute
@@ -100,6 +108,7 @@ export interface FileRoutesByTo {
   '/checkout': typeof AuthenticatedCheckoutRoute
   '/nfts/$nftId': typeof NftsNftIdRoute
   '/account/favorites': typeof AuthenticatedAccountFavoritesRoute
+  '/account/orders': typeof AuthenticatedAccountOrdersRoute
   '/account/profile': typeof AuthenticatedAccountProfileRoute
   '/account/wallets': typeof AuthenticatedAccountWalletsRoute
   '/orders/$orderId': typeof AuthenticatedOrdersOrderIdRoute
@@ -114,6 +123,7 @@ export interface FileRoutesById {
   '/_authenticated/checkout': typeof AuthenticatedCheckoutRoute
   '/nfts/$nftId': typeof NftsNftIdRoute
   '/_authenticated/account/favorites': typeof AuthenticatedAccountFavoritesRoute
+  '/_authenticated/account/orders': typeof AuthenticatedAccountOrdersRoute
   '/_authenticated/account/profile': typeof AuthenticatedAccountProfileRoute
   '/_authenticated/account/wallets': typeof AuthenticatedAccountWalletsRoute
   '/_authenticated/orders/$orderId': typeof AuthenticatedOrdersOrderIdRoute
@@ -128,6 +138,7 @@ export interface FileRouteTypes {
     | '/checkout'
     | '/nfts/$nftId'
     | '/account/favorites'
+    | '/account/orders'
     | '/account/profile'
     | '/account/wallets'
     | '/orders/$orderId'
@@ -140,6 +151,7 @@ export interface FileRouteTypes {
     | '/checkout'
     | '/nfts/$nftId'
     | '/account/favorites'
+    | '/account/orders'
     | '/account/profile'
     | '/account/wallets'
     | '/orders/$orderId'
@@ -153,6 +165,7 @@ export interface FileRouteTypes {
     | '/_authenticated/checkout'
     | '/nfts/$nftId'
     | '/_authenticated/account/favorites'
+    | '/_authenticated/account/orders'
     | '/_authenticated/account/profile'
     | '/_authenticated/account/wallets'
     | '/_authenticated/orders/$orderId'
@@ -225,6 +238,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAccountFavoritesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/account/orders': {
+      id: '/_authenticated/account/orders'
+      path: '/account/orders'
+      fullPath: '/account/orders'
+      preLoaderRoute: typeof AuthenticatedAccountOrdersRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/account/profile': {
       id: '/_authenticated/account/profile'
       path: '/account/profile'
@@ -252,6 +272,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteChildren {
   AuthenticatedCheckoutRoute: typeof AuthenticatedCheckoutRoute
   AuthenticatedAccountFavoritesRoute: typeof AuthenticatedAccountFavoritesRoute
+  AuthenticatedAccountOrdersRoute: typeof AuthenticatedAccountOrdersRoute
   AuthenticatedAccountProfileRoute: typeof AuthenticatedAccountProfileRoute
   AuthenticatedAccountWalletsRoute: typeof AuthenticatedAccountWalletsRoute
   AuthenticatedOrdersOrderIdRoute: typeof AuthenticatedOrdersOrderIdRoute
@@ -260,6 +281,7 @@ interface AuthenticatedRouteChildren {
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCheckoutRoute: AuthenticatedCheckoutRoute,
   AuthenticatedAccountFavoritesRoute: AuthenticatedAccountFavoritesRoute,
+  AuthenticatedAccountOrdersRoute: AuthenticatedAccountOrdersRoute,
   AuthenticatedAccountProfileRoute: AuthenticatedAccountProfileRoute,
   AuthenticatedAccountWalletsRoute: AuthenticatedAccountWalletsRoute,
   AuthenticatedOrdersOrderIdRoute: AuthenticatedOrdersOrderIdRoute,

@@ -34,7 +34,11 @@ export function signupButtonName(testInfo: TestInfo): string {
 export async function fillLogin(page: Page, email: string, password: string) {
   await page.getByLabel('E-mail').fill(email)
   await page.getByLabel('Senha', { exact: true }).fill(password)
+  const response = page.waitForResponse(
+    (candidate) => candidate.url().endsWith('/api/auth/login') && candidate.request().method() === 'POST',
+  )
   await page.getByRole('button', { name: 'Entrar', exact: true }).click()
+  await response
 }
 
 /** Signs in from /login and waits for the session to be shown in the demo panel. */

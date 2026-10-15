@@ -2,7 +2,7 @@
 
 Implementação do desafio frontend da Jungle Gaming (enunciado em [`docs/challenge.md`](docs/challenge.md)), com React, TypeScript, TanStack Router, TanStack Query, Axios, Socket.IO, Tailwind CSS, shadcn/ui, MSW e Playwright.
 
-> **Status: Fase F3 (carrinho e cotação), aguardando revisão.** Carrinho no servidor simulado (visitante por `X-Cart-Id`, junção ao entrar), cupons, resumo vindo de `POST /quotes` com ETH exato e ajustes de preço e estoque em tempo real, sobre o catálogo, o detalhe e os favoritos da F2 e a autenticação da F1. Checkout, pedidos, perfil completo e carteiras ainda são provisórios. Decisões e limitações estão em [`ARCHITECTURE.md`](ARCHITECTURE.md).
+> **Status: Fase F5B (histórico de pedidos), aguardando revisão.** A área autenticada reúne perfil, carteiras e pedidos do usuário. O histórico acompanha os estados da F4 em tempo real e reutiliza a tela existente de detalhes/recibo. F6 não faz parte desta fase. Decisões e limitações estão em [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Requisitos
 
@@ -77,6 +77,7 @@ O painel no rodapé mostra a sessão atual, o estado e a identidade da conexão 
 
 - **API fora do ar:** escolha a falha no painel, clique em "Aplicar cenário" e tente entrar. Volte para "Nenhuma falha" para recuperar.
 - **Sessão expirada:** entre, abra "Meu perfil", digite algo no nome de exibição sem salvar e clique em "Expirar sessão". Depois de entrar de novo, você volta ao perfil com o rascunho restaurado.
+- **Conta:** em "Meu perfil", edite o nome, envie/remova um avatar ou altere a senha. Em "Carteiras", edite os dois slots ou marque a secundária como "Igual à principal"; as mudanças continuam disponíveis no checkout após refresh.
 - **Armazenamento corrompido:** no console, `localStorage.setItem('kurio:mock-db:v1', '{')` e recarregue. O painel mostra "corrompido" e as chamadas falham com uma mensagem clara até o reset.
 - **Armazenamento cheio:** preencha o `localStorage` até a cota e tente criar uma conta: o cadastro falha com aviso, sem criar a conta (o teste `mocks.spec.ts` faz isso automaticamente).
 

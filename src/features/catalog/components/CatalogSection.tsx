@@ -205,7 +205,7 @@ function CatalogResults({ search, list, onChange }: CatalogResultsProps) {
         <ul
           aria-busy={updating}
           aria-label="NFTs"
-          className="grid grid-cols-2 gap-x-4 gap-y-8 transition-opacity aria-busy:opacity-60 md:grid-cols-3 md:gap-x-8 md:gap-y-[72px] max-md:[&>li:nth-child(even)]:mt-8"
+          className="grid grid-cols-2 gap-x-4 gap-y-8 transition-opacity aria-busy:opacity-60 md:gap-x-8 md:gap-y-[72px] max-md:[&>li:nth-child(even)]:mt-8 lg:grid-cols-3"
         >
           {data.items.map((nft, index) => (
             <li key={nft.id}>
@@ -225,7 +225,7 @@ export function CardGridSkeleton({ count, className }: { count: number; classNam
     <ul
       aria-hidden="true"
       data-testid="catalog-skeleton"
-      className={className ?? 'grid grid-cols-2 gap-x-4 gap-y-8 md:grid-cols-3 md:gap-x-8 md:gap-y-[72px]'}
+      className={className ?? 'grid grid-cols-2 gap-x-4 gap-y-8 md:gap-x-8 md:gap-y-[72px] lg:grid-cols-3'}
     >
       {Array.from({ length: count }, (_, index) => (
         <li key={index} className="flex flex-col gap-3">

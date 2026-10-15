@@ -7,6 +7,7 @@ import { fetchOrder, fetchOrders } from './api'
 
 export const orderKeys = {
   order: (userId: string, orderId: string) => privateQueryKey(userId, 'order', orderId),
+  history: (userId: string) => privateQueryKey(userId, 'orders', 'history'),
   pending: (userId: string) => privateQueryKey(userId, 'orders', 'pending'),
   attempt: (userId: string, idempotencyKey: string) => privateQueryKey(userId, 'orders', 'attempt', idempotencyKey),
 }
@@ -54,6 +55,24 @@ export function usePendingOrders(userId: string | null) {
   })
 }
 
+/** Complete history, already newest first on the API and reconciled after reconnect. */
+export function useOrderHistory(userId: string) {
+  const queryClient = useQueryClient()
+  return useQuery<Order[]>({
+    queryKey: orderKeys.history(userId),
+    queryFn: async ({ signal }) => {
+      const orders = await fetchOrders({}, signal)
+      return orders.map((order) => {
+        const newest = newestOrder(queryClient.getQueryData<Order>(orderKeys.order(userId, order.orderId)), order)
+        storeOrder(queryClient, userId, newest)
+        return newest
+      })
+    },
+    staleTime: 0,
+    meta: RECONCILE_ON_RECONNECT_META,
+  })
+}
+
 /** The order created by a purchase attempt, if the server has one (null otherwise). */
 export function useAttemptOrder(userId: string, idempotencyKey: string | null) {
   const queryClient = useQueryClient()
@@ -84,6 +103,7 @@ export function useOrderRealtimeSync(userId: string): void {
     const cached = queryClient.getQueryData<Order>(key)
     if (cached && cached.version >= event.version) return
     void queryClient.invalidateQueries({ queryKey: key, exact: true })
+    void queryClient.invalidateQueries({ queryKey: orderKeys.history(userId), exact: true })
     void queryClient.invalidateQueries({ queryKey: orderKeys.pending(userId), exact: true })
   })
 }

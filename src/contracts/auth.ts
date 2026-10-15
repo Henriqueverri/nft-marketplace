@@ -39,6 +39,21 @@ export const loginRequestSchema = z.object({
 })
 export type LoginRequest = z.infer<typeof loginRequestSchema>
 
+/** POST /api/me/password. Confirmation is a client-only concern. */
+export const changePasswordRequestSchema = z.object({
+  currentPassword: z.string().min(1, 'Informe a senha atual.'),
+  newPassword: passwordSchema,
+})
+export type ChangePasswordRequest = z.infer<typeof changePasswordRequestSchema>
+
+export const changePasswordFormSchema = changePasswordRequestSchema
+  .extend({ confirmPassword: z.string().min(1, 'Confirme a nova senha.') })
+  .refine((form) => form.newPassword === form.confirmPassword, {
+    path: ['confirmPassword'],
+    message: 'As senhas não coincidem.',
+  })
+export type ChangePasswordForm = z.input<typeof changePasswordFormSchema>
+
 /**
  * Response of signup (201) and login (200). The token is opaque: the API stores only
  * its SHA-256 digest, so a leaked mock database does not leak usable sessions.

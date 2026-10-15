@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { WalletConnection } from '@/contracts/wallets'
+import type { UpsertWalletRequest, Wallet, WalletConnection, WalletSlot } from '@/contracts/wallets'
 import { privateQueryKey } from '@/shared/session/query-keys'
-import { connectWallet, disconnectWallet, fetchWalletConnection, fetchWallets } from './api'
+import { connectWallet, disconnectWallet, fetchWalletConnection, fetchWallets, upsertWallet } from './api'
 
 export const walletKeys = {
   list: (userId: string) => privateQueryKey(userId, 'wallets'),
@@ -10,6 +10,19 @@ export const walletKeys = {
 
 export function useWallets(userId: string) {
   return useQuery({ queryKey: walletKeys.list(userId), queryFn: ({ signal }) => fetchWallets(signal) })
+}
+
+export function useUpsertWallet(userId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ slot, body }: { slot: WalletSlot; body: UpsertWalletRequest }) => upsertWallet(slot, body),
+    onSuccess: (wallet) => {
+      queryClient.setQueryData<Wallet[]>(walletKeys.list(userId), (current = []) => {
+        const withoutSlot = current.filter((candidate) => candidate.slot !== wallet.slot)
+        return [...withoutSlot, wallet].sort((a) => (a.slot === 'primary' ? -1 : 1))
+      })
+    },
+  })
 }
 
 /** The wallet app can drop the connection at any time: the cached state is never trusted as fresh. */

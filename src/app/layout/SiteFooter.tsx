@@ -86,6 +86,11 @@ export function SiteFooter() {
                   Meu perfil
                 </Link>
               </li>
+              <li>
+                <Link to="/account/orders" className={linkClass}>
+                  Meus pedidos
+                </Link>
+              </li>
               <li className={plainClass}>Minha coleção</li>
               <li className={plainClass}>Atividade</li>
               <li className={plainClass}>Estúdio do criador</li>

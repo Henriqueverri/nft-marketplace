@@ -150,7 +150,11 @@ Cada item segue o formato: problema, escolha, alternativa descartada e motivo.
 - **D30, liquidação por timer de cada pedido (F4C):** **problema:** liquidar só na leitura deixava um pedido vencido `pending` até alguém consultá-lo, e ninguém seria avisado. **Escolha:** cada pedido pendente com prazo (`confirm`/`reject`) tem o seu `setTimeout` até `settlesAt`, criado junto com o pedido; ao iniciar, o mock rearma os timers de todos os pendentes gravados (um pedido criado antes de um refresh liquida na página seguinte). O disparo liquida numa transação; se ainda não venceu (relógio da página mudado), reagenda. A liquidação na leitura continua como rede de segurança e usa a mesma função, então a transição acontece uma vez, venha de onde vier. `hold` não tem timer. "Restaurar estado inicial" cancela os timers. **Descartado:** um intervalo global que varre os pedidos (roda mesmo sem pedidos e prende testes que esperam a página ociosa); liquidar no primeiro `order.updated` lido pelo cliente.
 - **D31, `order.updated` só para o dono, sem recibo (F4C):** **escolha:** depois de cada transição gravada (criação v1, liquidação v2), o servidor emite `order.updated` só para os sockets do dono (`emitToUser`), com `userId` e `version` no envelope e só `{ orderId, status }` no payload. O cliente descarta evento de outro usuário (provider) ou de outra sessão, deduplica por `eventId` e ignora `version` menor ou igual à do cache; um evento novo só invalida a query do pedido e a lista de pendentes, e o recibo vem do REST autenticado. O merge do REST também nunca troca uma versão maior por uma menor. **Descartado:** levar o pedido inteiro no evento (dados privados do recibo pelo socket e uma segunda fonte de verdade).
 - **D32, recuperação por leitura, nunca por reenvio (F4C):** **escolha:** `GET /api/orders?status=pending` traz os pendentes do usuário ao abrir o app; `GET /api/orders?idempotencyKey=` diz se a tentativa guardada já virou pedido. Uma tentativa que existia ao abrir o checkout é consultada por essa leitura: se o pedido existe, a tela leva a ele e apaga a tentativa; nada é reenviado sem o clique do usuário. Se o pedido liquida (e esvazia o carrinho) enquanto a resposta não chega, a tela continua mostrando a compra em andamento, e não "carrinho vazio". **Descartado:** reenviar a tentativa sozinho ao abrir a tela (um POST sem ação do usuário).
-- **D33, carteira validada no servidor; conexão não garantida (F4C):** **escolha:** `POST /api/orders` continua recusando (422) carteira de outro usuário ou inexistente e rede diferente da rede da carteira (inclusive rede sem carteira); o cliente não é a defesa. A conexão da carteira **não** é exigida pelo servidor: no mock ela é um estado que o próprio cliente liga sem prova (não há assinatura), então exigi-la seria uma garantia aparente. Fica documentada como limitação (seção 33). **Descartado:** checar a conexão em `POST /orders` como se fosse prova de posse da carteira.
+- **D33, carteira validada no servidor; conexão não garantida (F4C):** **escolha:** `POST /api/orders` continua recusando (422) carteira de outro usuário ou inexistente e rede diferente da rede da carteira (inclusive rede sem carteira); o cliente não é a defesa. A conexão da carteira **não** é exigida pelo servidor: no mock ela é um estado que o próprio cliente liga sem prova (não há assinatura), então exigi-la seria uma garantia aparente. Fica documentada como limitação (seção 34). **Descartado:** checar a conexão em `POST /orders` como se fosse prova de posse da carteira.
+- **D34, slots estáveis de carteira (F5A):** `PUT /api/wallets/:slot` cria ou substitui `primary`/`secondary`, preservando o id de um slot existente. Assim, uma edição não invalida a identidade usada pela conexão simulada nem pelo checkout. “Igual à principal” é intenção explícita no request da secundária; o servidor copia os campos atuais da principal na mesma transação, em vez de confiar numa cópia montada pelo cliente.
+- **D35, avatar reduzido antes do transporte (F5A):** o cliente aceita PNG, JPEG ou WebP de até 5 MB, limita a maior aresta a 256 px em `canvas` e envia WebP como data URL para `PUT /api/me/avatar`. O mock persiste apenas a versão reduzida. Esta escolha mantém a demonstração autocontida; em produção, a API receberia upload binário e guardaria uma URL de object storage.
+- **D36, histórico sobre a listagem existente (F5B):** `/account/orders` usa `GET /api/orders` sem filtro, que já isola pelo token e ordena por `createdAt` decrescente. Cada resposta alimenta também o cache individual do pedido. O listener `order.updated` da F4 invalida o pedido, a lista de pendentes e agora o histórico; na reconexão, a mesma metadata de reconciliação refaz a lista pelo REST. **Descartado:** novo endpoint resumido, polling ou uma segunda infraestrutura de eventos.
+- **D37, tablet, auditoria e baselines (F6):** em 768 px o catálogo mantém duas colunas e os filtros continuam no drawer; a terceira coluna só entra em `lg` (1024 px), e o checkout permanece em uma coluna até esse mesmo breakpoint. A cobertura de acessibilidade, responsividade e regressão visual foi separada em `a11y`, `responsive` e `visual`: axe verifica WCAG A/AA nas rotas públicas, favoritos e drawer, enquanto os baselines versionados cobrem início, detalhe, carrinho e pagamento em desktop e mobile. **Descartado:** snapshots sem dados ou regras axe globais desativadas, pois ambos ocultariam regressões reais.
 
 ## 9. Resultados da F0
 
@@ -202,8 +206,12 @@ O cliente acrescenta códigos que não vêm do servidor: `NETWORK_ERROR`, `TIMEO
 | `POST /api/auth/login` | 200 `AuthSession` | 422, 401 `INVALID_CREDENTIALS` |
 | `GET /api/auth/session` | 200 `CurrentSession` | 401 `UNAUTHENTICATED`/`SESSION_EXPIRED` |
 | `POST /api/auth/logout` | 204 | 401 |
-| `GET /api/account/profile` | 200 `AccountProfile` | 401 |
-| `PATCH /api/account/profile` | 200 `AccountProfile` + evento `profile.updated` | 401, 422 |
+| `GET /api/me` | 200 `AccountProfile` | 401 |
+| `PATCH /api/me` | 200 `AccountProfile` + evento `profile.updated` | 401, 422 |
+| `PUT /api/me/avatar` | 200 `AccountProfile` + evento `profile.updated` | 401, 422 |
+| `POST /api/me/password` | 204 | 401, 422 (inclusive senha atual incorreta) |
+| `GET /api/wallets` | 200 `WalletList` | 401 |
+| `PUT /api/wallets/:slot` | 200 `Wallet` | 401, 404, 422 |
 
 Os handlers derivam o usuário **somente do token**; nenhuma rota aceita `userId` do cliente. Conflitos de cadastro são checados de novo dentro da transação, porque o hash da senha é assíncrono e outra aba pode ter criado a conta nesse intervalo.
 
@@ -309,7 +317,8 @@ Seguem os frames "Desktop / Login", "Desktop / Cadastro", "Mobile / Login" e "Mo
 - **Acessibilidade:** o Figma usa só placeholders; cada campo tem um `label` visualmente oculto. Erros ficam em `aria-describedby`, com `aria-invalid` e foco no primeiro campo inválido. Erros gerais usam `role=alert`. O título do modal é um `h1` oculto. O foco inicial vai para o primeiro campo. Texto de erro em coral `#f0805f`, que contrasta melhor no fundo escuro que o vermelho `#ed1b2e` do Figma.
 - **Fora do escopo da demonstração:** login social e "Esqueceu a senha?" mantêm a composição do Figma, mas avisam "indisponível na demonstração" num `role=status`, em vez de fingir que funcionam.
 - **Substituição documentada:** o ícone de "mostrar senha" é o `Eye` do lucide, porque o Figma só tem o ícone de senha oculta (exportado de lá, junto com os ícones de Google, Facebook e fechar, por `scripts/export-figma-assets.mjs`).
-- **Perfil provisório:** `/account/profile` já lê e altera dados privados reais (nome de exibição, com rascunho por usuário), porque os testes de isolamento dependem disso. A tela do Figma entra na F5.
+- **Conta (F5):** `/account/profile` edita o nome, avatar e senha; `/account/wallets` mantém os slots principal e secundário; `/account/orders` lista os pedidos e leva à rota existente de detalhes. No desktop a navegação da conta fica lateral e, no mobile, acima do conteúdo. Erros de campo usam `aria-invalid`/`aria-describedby` e levam o foco ao primeiro campo inválido.
+- **Lacuna do Figma:** não havia frame específico de perfil/carteiras disponível no contexto desta fase. A composição usa os tokens, campos, cartões e estados já existentes; nenhum campo foi acrescentado além dos contratos (`AccountProfile` e `Wallet`).
 
 ## 17. Resultados da F1
 
@@ -574,9 +583,22 @@ Execuções locais em 15/10/2026, mesmo ambiente das fases anteriores:
 
   `e2e/checkout.spec.ts` passou a esperar a confirmação pelo evento, em vez de tocar em "Atualizar status".
 
-## 33. Limitações e pendências
+## 33. Conta: perfil, carteiras e pedidos (F5)
 
-- Perfil completo e gestão de carteiras continuam provisórios (F5). O checkout e a página do pedido existem (seções 31 e 32); não há lista de pedidos do usuário.
+- **Perfil:** a query privada `['user', userId, 'profile']` lê `GET /api/me`. A alteração do nome atualiza também o usuário no cache de sessão; refresh volta ao valor persistido. O rascunho do nome continua isolado por usuário.
+- **Avatar:** seleção local, pré-visualização da imagem já redimensionada, gravação explícita e remoção. A API aceita apenas data URL PNG/JPEG/WebP com limite de tamanho e deriva o dono exclusivamente da sessão.
+- **Senha:** confirmação existe só no formulário; a API recebe apenas senha atual e nova. A senha atual é comparada em tempo constante com PBKDF2 e a nova substitui o hash e o salt. Nenhuma resposta, estado persistido ou log contém senha em texto claro.
+- **Carteiras:** lista e escrita usam chave de query privada. Endereços EVM são exigidos para Ethereum/Polygon e base58 para Solana. Escritas mantêm o id do slot, atualizam o cache usado pelo checkout e só anunciam sucesso depois da resposta da API.
+- **Acessibilidade e responsividade:** a navegação de Perfil/Carteiras é lateral a partir de 768 px e horizontal no mobile. Campos têm labels, erros associados e foco no primeiro erro. Mutations mantêm os valores em falha.
+- **Teste focal:** `e2e/account.spec.ts` cobre persistência do perfil, 422, senha, avatar 256 px e remoção, edição/cópia das carteiras, uso no checkout e isolamento entre Ana e Bruno, nos projetos desktop e mobile.
+- **Histórico (F5B):** `e2e/order-history.spec.ts` prepara pedidos pela API real do mock e cobre ordenação, os três estados, vazio, navegação ao recibo existente, isolamento e transição via `order.updated`. A spec usa os projetos desktop e mobile da configuração global, mas não foi executada nesta fase porque o Chromium não está instalado.
+
+## 34. Limitações e pendências
+
+- O checkout, o histórico e a página individual do pedido existem (seções 31–33); paginação e filtros visuais do histórico não foram acrescentados porque a API atual limita a lista aos 20 pedidos mais recentes.
+- O avatar é persistido como data URL no banco do navegador para manter o mock autocontido. Produção deve usar upload binário, validação de conteúdo no backend e object storage.
+- Os frames específicos de perfil e carteiras não estavam disponíveis no contexto desta fase; a composição segue os tokens e componentes existentes, sem inventar campos.
+- **QA visual (F7):** `docs/figma-reference/` não contém exportações para comparar as quatro telas prioritárias. A inspeção de consistência ficou limitada aos tokens e componentes locais; não houve correção visual nem atualização de baseline sem uma referência externa verificável.
 - **Checkout (F4B):**
   - A conexão da carteira fica na memória do mock: recarregar a página desconecta, e o usuário conecta de novo. O reenvio de uma tentativa recuperada depois do refresh pede a conexão antes de sair.
   - O servidor não exige a conexão da carteira para criar o pedido (D29, D33): no mock a conexão não prova a posse da carteira, porque não há assinatura. Uma integração real deve exigir a transação assinada pela carteira e conferi-la no servidor.
@@ -584,7 +606,7 @@ Execuções locais em 15/10/2026, mesmo ambiente das fases anteriores:
 - **Ciclo de vida (F4C):**
   - Os timers vivem na aba que hospeda o mock. Com várias abas, cada uma arma os seus; a transação no banco garante uma só transição, mas o evento sai da aba que liquidou, e os sockets de outras abas não o recebem (limitação das abas, abaixo). A outra aba vê a mudança ao refazer as queries.
   - Sem nenhuma aba aberta, nada liquida; o pedido vencido liquida quando o mock iniciar de novo.
-  - Os avisos de pedido acompanham os pendentes vistos nesta sessão da aba; um pedido liquidado antes de o app abrir não gera aviso (não há histórico de pedidos).
+  - Os avisos globais acompanham os pendentes vistos nesta sessão da aba; um pedido liquidado antes de o app abrir não gera aviso global, mas permanece consultável no histórico.
   - O hash e a URL do explorador são simulados; nenhuma transação existe na rede.
 - **Pedidos (F4A):**
   - A rede do pedido é a da carteira escolhida; a rede de cada NFT não é verificada.
