@@ -5,7 +5,9 @@ import { createRoot } from 'react-dom/client'
 import { env } from '@/app/env'
 import { createQueryClient } from '@/app/query-client'
 import { createAppRouter } from '@/app/router'
+import { AnnouncerProvider } from '@/shared/feedback/Announcer'
 import { RealtimeProvider } from '@/shared/realtime/RealtimeProvider'
+import { bindSessionToQueryClient } from '@/shared/session/session-lifecycle'
 import './index.css'
 
 async function enableMocking(): Promise<void> {
@@ -15,6 +17,7 @@ async function enableMocking(): Promise<void> {
 }
 
 const queryClient = createQueryClient()
+bindSessionToQueryClient(queryClient)
 const router = createAppRouter(queryClient)
 
 // The worker must be running before the first request and before the socket is created.
@@ -23,9 +26,11 @@ await enableMocking()
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RealtimeProvider>
-        <RouterProvider router={router} />
-      </RealtimeProvider>
+      <AnnouncerProvider>
+        <RealtimeProvider>
+          <RouterProvider router={router} />
+        </RealtimeProvider>
+      </AnnouncerProvider>
     </QueryClientProvider>
   </StrictMode>,
 )

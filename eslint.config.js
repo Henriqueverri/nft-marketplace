@@ -15,6 +15,11 @@ const socketImports = {
   message: 'Use the realtime module (src/shared/realtime) instead of socket.io-client directly.',
 }
 
+const cnImports = {
+  group: ['cn'],
+  message: 'Import cn from @/lib/utils: it is configured with the Kurio type scale.',
+}
+
 export default defineConfig([
   globalIgnores([
     'dist',
@@ -55,13 +60,19 @@ export default defineConfig([
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/mocks/**', 'src/shared/realtime/**'],
     rules: {
-      'no-restricted-imports': ['error', { patterns: [mockImports, socketImports] }],
+      'no-restricted-imports': ['error', { patterns: [mockImports, socketImports, cnImports] }],
     },
   },
   {
     files: ['src/shared/realtime/**/*.{ts,tsx}'],
     rules: {
-      'no-restricted-imports': ['error', { patterns: [mockImports] }],
+      'no-restricted-imports': ['error', { patterns: [mockImports, cnImports] }],
+    },
+  },
+  {
+    files: ['src/lib/utils.ts'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [mockImports, socketImports] }],
     },
   },
   {

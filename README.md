@@ -2,7 +2,7 @@
 
 Implementação do desafio frontend da Jungle Gaming (enunciado em [`docs/challenge.md`](docs/challenge.md)), com React, TypeScript, TanStack Router, TanStack Query, Axios, Socket.IO, Tailwind CSS, shadcn/ui, MSW e Playwright.
 
-> **Status: Fase F0 (fundação).** As telas ainda são provisórias. Esta fase entrega a base do projeto, o deploy, os testes iniciais e a prova de conceito de Socket.IO sobre MSW. Decisões e limitações estão em [`ARCHITECTURE.md`](ARCHITECTURE.md).
+> **Status: Fase F1 (contratos, mocks e sessão), aguardando revisão.** Cadastro, login, logout, expiração de sessão, rotas protegidas, isolamento entre usuários, banco simulado persistente e painel de cenários. As telas de catálogo, carrinho e checkout ainda são provisórias. Decisões e limitações estão em [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Requisitos
 
@@ -50,22 +50,56 @@ EXPECTED_COMMIT_SHA=$(git rev-parse HEAD) \
 npm run test:e2e:deploy
 ```
 
-## Mocks (estado na F0)
+## Mocks e demonstração
 
-O MSW é iniciado antes da renderização e intercepta HTTP e WebSocket na própria página. Os endpoints de controle disponíveis nesta fase:
+O MSW é iniciado antes da renderização e intercepta HTTP e WebSocket na própria página. Os dados ficam num banco simulado no `localStorage` do navegador: sobrevivem ao refresh e são independentes por navegador.
 
-- `GET /__mock/status`: confirma que o mock responde e informa quantas conexões Socket.IO estão ativas.
-- `POST /__mock/socket/disconnect`: o servidor simulado encerra as conexões Socket.IO, para exercitar a reconexão.
+### Contas fictícias
+
+| E-mail | Senha | Nome |
+| --- | --- | --- |
+| `ana@kurio.test` | `kurio-ana-2026` | Ana Costa |
+| `bruno@kurio.test` | `kurio-bruno-2026` | Bruno Lima |
+
+Também é possível criar contas novas em "Criar conta". As senhas são guardadas só como hash PBKDF2 com salt. Isto é **autenticação simulada**, não equivale à segurança de um backend (detalhes na seção 11 do `ARCHITECTURE.md`).
+
+### Painel da demonstração
+
+O painel no rodapé mostra a sessão atual, o estado e a identidade da conexão em tempo real, os contadores de eventos, o cenário ativo, o estado do armazenamento e a versão publicada. No desktop, feche o modal de login para usar o painel (o modal torna o resto da página inerte, por acessibilidade).
+
+- **Latência:** atraso aplicado a toda chamada `/api/*` (0 a 3000 ms no painel; até 10000 ms pela API).
+- **Falha da API:** "Erro interno (500)", "Serviço indisponível (503)" ou "Sem rede".
+- **Cliente de tempo real:** "Falha ao carregar" faz o carregamento do cliente Socket.IO falhar na próxima carga da página; o app mostra o aviso de tempo real indisponível, com nova tentativa.
+- **Expirar sessão:** vence a sessão no banco; a próxima chamada recebe um 401 real e o app leva ao login, guardando a rota de retorno.
+- **Restaurar estado inicial:** recria o banco a partir do seed, volta ao cenário padrão (100 ms, sem falha), encerra a sessão e recarrega na home.
+
+### Reproduzir falhas
+
+- **API fora do ar:** escolha a falha no painel, clique em "Aplicar cenário" e tente entrar. Volte para "Nenhuma falha" para recuperar.
+- **Sessão expirada:** entre, abra "Meu perfil", digite algo no nome de exibição sem salvar e clique em "Expirar sessão". Depois de entrar de novo, você volta ao perfil com o rascunho restaurado.
+- **Armazenamento corrompido:** no console, `localStorage.setItem('kurio:mock-db:v1', '{')` e recarregue. O painel mostra "corrompido" e as chamadas falham com uma mensagem clara até o reset.
+- **Armazenamento cheio:** preencha o `localStorage` até a cota e tente criar uma conta: o cadastro falha com aviso, sem criar a conta (o teste `mocks.spec.ts` faz isso automaticamente).
+
+### API de controle
+
+Disponível só com `VITE_ENABLE_MOCKS=true`. O painel e os testes usam estas rotas; o app nunca acessa o banco diretamente.
+
+- `GET /__mock/status` e `GET /__mock/state`: estado do mock, sem segredos.
+- `GET`/`PUT /__mock/scenario`: cenário de rede, por exemplo `{ "latencyMs": 1500, "failure": "none" }`.
+- `POST /__mock/reset`: restaura o seed.
+- `POST /__mock/session/expire`: vence as sessões ativas.
+- `POST /__mock/socket/disconnect` e `GET /__mock/socket/connections`: conexões Socket.IO.
+- `POST /__mock/users/:userId/profile`: muda o nome de um usuário e emite o evento em tempo real.
 
 Exemplo, no console do navegador com a aplicação aberta:
 
 ```js
-await (await fetch('/__mock/socket/disconnect', { method: 'POST' })).json()
+await (await fetch('/__mock/scenario', {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ latencyMs: 1500, failure: 'none' }),
+})).json()
 ```
-
-A barra "Diagnóstico da demonstração", no rodapé, mostra o estado dos mocks, da conexão em tempo real, contadores de conexões e quedas, e a versão (commit) publicada.
-
-Cenários, seleção, persistência, reset e credenciais fictícias chegam na F1.
 
 ## Deploy (Vercel)
 
@@ -82,10 +116,13 @@ Para publicar: importar o repositório no painel da Vercel (preset Vite). Nenhum
 ```
 src/
   app/          bootstrap: env, QueryClient, router
-  contracts/    contratos compartilhados por app, mocks e testes
-  routes/       rotas do TanStack Router (file-based)
-  shared/       api (Axios), realtime (Socket.IO), layout
+  contracts/    schemas zod compartilhados por app, mocks e testes
+  routes/       rotas do TanStack Router (file-based); privadas em _authenticated/
+  features/     auth, account, demo (painel), home
+  shared/       api (Axios), session, realtime (Socket.IO), forms, feedback, layout
+  lib/          utilitários puros (cn, ETH)
   components/   componentes shadcn/ui
-  mocks/        MSW: handlers HTTP, servidor Socket.IO simulado, controle
+  mocks/        MSW: banco simulado, handlers REST, cenários, Socket.IO, controle
 e2e/            testes Playwright
+scripts/        exportação de assets do Figma (usa FIGMA_TOKEN do .env.local)
 ```

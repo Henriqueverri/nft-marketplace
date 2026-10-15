@@ -23,6 +23,8 @@
   --color-surface-dark: #38220f;
   --color-border-strong: #2f1d15;
   --color-border-soft: #38220f;
+  /* Stroke of inputs, social buttons and dividers in the auth modals */
+  --color-border-field: #3f2319;
   --color-brand: #d28a4c;
   --color-brand-accent: #e89b55;
   --color-amber: #e3a44e;

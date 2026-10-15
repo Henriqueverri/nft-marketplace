@@ -1,18 +1,14 @@
 import { expect, test } from '@playwright/test'
+import { authHeading } from './support/auth'
 import { callMockControl, type MockStatus } from './support/mock-control'
 
-const plannedRoutes = [
+const publicRoutes = [
   { path: '/', heading: 'Início' },
   { path: '/nfts/emerald-ape-042', heading: 'Detalhes do NFT' },
   { path: '/cart', heading: 'Carrinho de NFTs' },
-  { path: '/checkout', heading: 'Pagamento' },
-  { path: '/orders/order-123', heading: 'Confirmação de pedido' },
-  { path: '/login', heading: 'Entrar' },
-  { path: '/signup', heading: 'Criar conta' },
-  { path: '/account/profile', heading: 'Perfil do colecionador' },
-  { path: '/account/wallets', heading: 'Carteiras' },
-  { path: '/account/favorites', heading: 'Lista de interesse' },
 ]
+
+const privateRoutes = ['/checkout', '/orders/order-123', '/account/profile', '/account/wallets', '/account/favorites']
 
 test.describe('smoke @smoke', () => {
   test('opens the home route', async ({ page }) => {
@@ -22,19 +18,34 @@ test.describe('smoke @smoke', () => {
     await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible()
   })
 
-  for (const route of plannedRoutes) {
+  for (const route of publicRoutes) {
     test(`direct access to ${route.path}`, async ({ page }) => {
       await page.goto(route.path)
       await expect(page.getByRole('heading', { level: 1, name: route.heading })).toBeVisible()
     })
   }
 
+  for (const mode of ['login', 'signup'] as const) {
+    test(`direct access to /${mode}`, async ({ page }, testInfo) => {
+      await page.goto(`/${mode}`)
+      await expect(page.getByRole('heading', { level: 1, name: authHeading(mode, testInfo) })).toBeVisible()
+    })
+  }
+
+  for (const path of privateRoutes) {
+    test(`direct access to ${path} without a session goes to login`, async ({ page }) => {
+      await page.goto(path)
+      await expect(page).toHaveURL((url) => url.pathname === '/login' && url.searchParams.get('redirect') === path)
+      await expect(page.getByRole('heading', { level: 1, name: 'Entrar' })).toBeVisible()
+    })
+  }
+
   test('refresh on an internal route keeps the screen', async ({ page }) => {
-    await page.goto('/account/wallets')
-    await expect(page.getByRole('heading', { level: 1, name: 'Carteiras' })).toBeVisible()
+    await page.goto('/cart')
+    await expect(page.getByRole('heading', { level: 1, name: 'Carrinho de NFTs' })).toBeVisible()
     await page.reload()
-    await expect(page).toHaveURL(/\/account\/wallets$/)
-    await expect(page.getByRole('heading', { level: 1, name: 'Carteiras' })).toBeVisible()
+    await expect(page).toHaveURL(/\/cart$/)
+    await expect(page.getByRole('heading', { level: 1, name: 'Carrinho de NFTs' })).toBeVisible()
   })
 
   test('client-side navigation works', async ({ page }) => {
@@ -66,6 +77,7 @@ test.describe('smoke @smoke', () => {
     await page.goto('/')
     await expect(page.getByTestId('realtime-state')).toHaveText('conectado')
     await expect(page.getByTestId('realtime-last-hello')).not.toHaveText('—')
+    await expect(page.getByTestId('realtime-identity')).toHaveText('anônima')
 
     const status = await callMockControl<MockStatus>(page, '/__mock/status')
     expect(status.socketConnections).toBe(1)

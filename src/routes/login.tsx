@@ -1,6 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { PlaceholderPage } from '@/shared/layout/PlaceholderPage'
+import { AuthScreen } from '@/features/auth/components/AuthScreen'
+import { redirectIfAuthenticated } from '@/features/auth/guards'
+import { validateAuthSearch } from '@/features/auth/redirect'
 
 export const Route = createFileRoute('/login')({
-  component: () => <PlaceholderPage title="Entrar" phase="F1" />,
+  validateSearch: validateAuthSearch,
+  beforeLoad: redirectIfAuthenticated,
+  component: LoginRoute,
 })
+
+function LoginRoute() {
+  return <AuthScreen mode="login" search={Route.useSearch()} />
+}

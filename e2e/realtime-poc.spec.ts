@@ -40,6 +40,43 @@ test.describe('socket.io over msw @smoke @realtime', () => {
     expect(status.socketConnections).toBe(1)
   })
 
+  test('a realtime client that fails to load is reported and can be retried', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.getByTestId('realtime-state')).toHaveText('conectado')
+
+    // The mock answers the realtime client chunk with a network error, like a chunk
+    // removed by a new deploy; the app's own dynamic import is what fails.
+    await callMockControl(page, '/__mock/scenario', 'PUT', {
+      latencyMs: 100,
+      failure: 'none',
+      realtimeClient: 'unavailable',
+    })
+    const chunkRequest = page.waitForRequest((request) => /\/socket-client-[\w-]+\.js$/.test(request.url()))
+    await page.reload()
+    await chunkRequest
+
+    await expect(page.getByTestId('realtime-state')).toHaveText('indisponível')
+    const notice = page.getByRole('alert').filter({ hasText: 'Atualizações em tempo real indisponíveis' })
+    await expect(notice).toBeVisible()
+    await expect(notice).not.toContainText(/token|socket|import|chunk/i)
+    await expect(page.getByTestId('realtime-connects')).toHaveText('0')
+    await expect(page.getByTestId('realtime-last-hello')).toHaveText('—')
+    let status = await callMockControl<MockStatus>(page, '/__mock/status')
+    expect(status.socketConnections).toBe(0)
+
+    // Retrying while the chunk still fails keeps the honest state.
+    await notice.getByRole('button', { name: 'Tentar conectar novamente' }).click()
+    await expect(page.getByTestId('realtime-state')).toHaveText('indisponível')
+
+    await callMockControl(page, '/__mock/scenario', 'PUT', { latencyMs: 100, failure: 'none' })
+    await page.getByRole('button', { name: 'Tentar conectar novamente' }).click()
+    await expect(page.getByTestId('realtime-state')).toHaveText('conectado')
+    await expect(notice).toHaveCount(0)
+    await expect(page.getByTestId('realtime-connects')).toHaveText('1')
+    status = await callMockControl<MockStatus>(page, '/__mock/status')
+    expect(status.socketConnections).toBe(1)
+  })
+
   test('reconnects after the server closes the connection', async ({ page }) => {
     await page.goto('/')
     await expect(page.getByTestId('realtime-state')).toHaveText('conectado')
