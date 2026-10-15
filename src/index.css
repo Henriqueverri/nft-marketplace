@@ -1,111 +1,140 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource/roboto-mono/latin-400.css";
+@import "@fontsource/roboto-mono/latin-500.css";
+@import "@fontsource/roboto-mono/latin-700.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Kurio design tokens, extracted from the Figma file (named styles).
+ * The app has a single dark theme; <html class="dark"> enables the dark
+ * variants that shadcn/ui components ship with.
+ */
+@theme {
+  --font-sans: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mono: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Color/* and Text/* styles */
+  --color-ink: #140d0a;
+  --color-surface-card: #241612;
+  --color-surface-raised: #2f1d15;
+  --color-surface-dark: #38220f;
+  --color-border-strong: #2f1d15;
+  --color-border-soft: #38220f;
+  --color-brand: #d28a4c;
+  --color-brand-accent: #e89b55;
+  --color-amber: #e3a44e;
+  --color-coral: #f0805f;
+  --color-sand: #b39463;
+  --color-text-secondary: #cfb28c;
+  --color-cream: #f5f1eb;
+  --color-gray-light: #ededed;
+  --color-elevated: #fbfbfb;
+  --color-success: #00a66c;
+  --color-error: #ed1b2e;
+
+  /* Type scale (Display/Heading/Title/Body/Caption/Tiny styles) */
+  --text-display-43: 43px;
+  --text-display-43--line-height: 70px;
+  --text-display-32: 32px;
+  --text-display-32--line-height: 42px;
+  --text-display-32--letter-spacing: 0.1em;
+  --text-heading-28: 28px;
+  --text-heading-28--line-height: 37px;
+  --text-heading-24: 24px;
+  --text-heading-24--line-height: 32px;
+  --text-title-22: 22px;
+  --text-title-22--line-height: 29px;
+  --text-title-20: 20px;
+  --text-title-20--line-height: 28px;
+  --text-body-18: 18px;
+  --text-body-18--line-height: 24px;
+  --text-body-16: 16px;
+  --text-body-16--line-height: 21px;
+  --text-body-15: 15px;
+  --text-body-15--line-height: 20px;
+  --text-body-14: 14px;
+  --text-body-14--line-height: 20px;
+  --text-caption-13: 13px;
+  --text-caption-13--line-height: 16px;
+  --text-caption-12: 12px;
+  --text-caption-12--line-height: 16px;
+  --text-tiny-11: 11px;
+  --text-tiny-11--line-height: 14px;
+  --text-tiny-10: 10px;
+  --text-tiny-10--line-height: 13px;
+  --text-tiny-9: 9px;
+  --text-tiny-9--line-height: 12px;
+
+  /* Effects */
+  --shadow-card: 0 4px 12px rgb(20 13 10 / 0.15);
+  --shadow-glow: 0 0 20px rgb(10 6 4 / 0.45);
+  --shadow-modal: 0 20px 20px rgb(10 6 4 / 0.45);
+}
+
+/* shadcn/ui semantic tokens mapped onto the Kurio palette. */
+@theme inline {
+  --font-heading: var(--font-sans);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.5);
+  --radius-2xl: calc(var(--radius) * 2);
+  --radius-3xl: calc(var(--radius) * 2.5);
+  --radius-4xl: calc(var(--radius) * 3);
+}
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  color-scheme: dark;
+  --background: #140d0a;
+  --foreground: #f5f1eb;
+  --card: #241612;
+  --card-foreground: #f5f1eb;
+  --popover: #241612;
+  --popover-foreground: #f5f1eb;
+  --primary: #d28a4c;
+  --primary-foreground: #140d0a;
+  --secondary: #2f1d15;
+  --secondary-foreground: #f5f1eb;
+  --muted: #2f1d15;
+  --muted-foreground: #cfb28c;
+  --accent: #38220f;
+  --accent-foreground: #e89b55;
+  --destructive: #ed1b2e;
+  --border: #2f1d15;
+  --input: #38220f;
+  --ring: #e89b55;
+  --radius: 0.5rem;
+}
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
-
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+  html {
+    @apply font-sans;
   }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
+  body {
+    @apply bg-background text-foreground antialiased;
   }
-}
-
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-}
-
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
-}
-
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
-
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
 }
