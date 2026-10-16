@@ -78,7 +78,7 @@ Três ajustes foram necessários. Todos foram descobertos e confirmados empirica
 - `public/mockServiceWorker.js` é gerado por `npx msw init public --save` e mantido na versão do pacote (`msw.workerDirectory` no `package.json`).
 - A Vercel serve o worker com `Cache-Control: no-cache, no-store, must-revalidate`, para evitar que uma versão antiga fique registrada.
 - A SPA usa rewrite de todas as rotas para `index.html`. Limitação: rotas inexistentes respondem HTTP 200 com o app, que então renderiza a página 404.
-- **Custo de performance:** o chunk do MSW tem cerca de 465 kB (cerca de 172 kB gzip) e é carregado antes do primeiro render. Na sondagem de Lighthouse da F2 (seção 24), ele é o principal custo do perfil mobile.
+- **Custo de performance:** o chunk do MSW tem cerca de 465 kB (cerca de 172 kB gzip) e é carregado antes do primeiro render. Na auditoria Lighthouse da F8 (seção 24), ele é o principal custo do perfil mobile.
 
 ## 5. Estado remoto e HTTP
 
@@ -393,29 +393,27 @@ Execuções locais em 15/10/2026, mesmo ambiente da F0:
 - **Edição inicial:** a mais barata disponível, que corresponde ao preço do card.
 - **Topo mobile:** uma barra com "KURIO" e "Entrar" (ou usuário e "Sair") para manter o acesso à sessão, que o frame mobile não mostra.
 
-## 24. Resultados da F2
+## 24. Auditoria Lighthouse (F8)
 
-Execuções locais em 15/10/2026, mesmo ambiente das fases anteriores:
+Coleção entregue: [`lighthouse/f8-2026-10-15-final-2/`](lighthouse/f8-2026-10-15-final-2/) (12 relatórios HTML/JSON e [`summary.md`](lighthouse/f8-2026-10-15-final-2/summary.md)). Configuração: `scripts/lighthouse.mjs` (`npm run lighthouse`).
 
-- `npm run verify` (typecheck, lint, build): passou.
-- `npx playwright test`, suíte completa, desktop + mobile, depois da revisão final: **162 aprovados, 2 pulados, 0 falhas** (4,1 min). Os 2 pulados são a checagem do commit do deploy (seção 7). Antes da revisão eram 156 aprovados; os 6 novos são os 3 testes de concorrência de favoritos nos dois projetos.
-- **Lighthouse 13.5.0** (`npm run lighthouse`), build de produção com MSW ativo e cenário padrão. Duas rodadas depois da revisão (faixa mín.–máx.), comparadas à medição anterior:
+**Condições** (iguais às do `summary.md`): build otimizado servido por preview (`http://127.0.0.1:4175`), `VITE_ENABLE_MOCKS=true`, cenário padrão sem latência nem falha deliberada; home (`/`) e detalhe (`/nfts/emerald-ape-042`); presets mobile e desktop; três rodadas sequenciais por combinação; Lighthouse 13.5.0, Node v24.12.0, HeadlessChrome 155. Medianas das categorias e de LCP, CLS e TBT:
 
-| Página | Perfil | Performance antes → depois | Acessib. | Boas práticas | SEO antes → depois | FCP | LCP | TBT | CLS |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Início | mobile | 67–72 → 72–75 | 100 | 100 | 92 → 100 | 3,3–3,5 s | 4,6–4,9 s | 140–160 ms | 0 |
-| Início | desktop | 98 → 98 | 100 | 100 | 92 → 100 | 0,8 s | 1,0–1,1 s | 10 ms | 0,004 |
-| Detalhe | mobile | 75 → 76–77 | 100 | 100 | 92 → 100 | 3,3–3,4 s | 4,3 s | 140–170 ms | 0 |
-| Detalhe | desktop | 98 → 98 | 100 | 100 | 92 → 100 | 0,7–0,8 s | 1,0 s | 10 ms | 0 |
+| Página | Perfil | Performance (≥90) | Accessibility (≥95) | Best Practices (≥95) | SEO (≥90) | LCP | CLS | TBT |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Início | mobile | 70 | 100 | 100 | 100 | 5,11 s | 0 | 155 ms |
+| Início | desktop | 97 | 100 | 100 | 100 | 1,11 s | 0,004 | 11 ms |
+| Detalhe | mobile | 71 | 100 | 100 | 100 | 4,90 s | 0 | 151 ms |
+| Detalhe | desktop | 97 | 100 | 100 | 100 | 1,06 s | 0 | 0 ms |
 
-- **Meta mobile de 90: não atingida.** A nota mobile oscila cerca de ±4 pontos entre rodadas sem mudança de código (a home já mediu 67 e 75 com o mesmo build).
-- **Causa conhecida:** no mobile (CPU 4× mais lenta e rede 4G simulada), o primeiro render espera o chunk do MSW (cerca de 172 kB gzip, o maior do app, com cerca de 69 kB não usados no carregamento) e o registro do worker; só então as queries começam e as imagens são descobertas. O LCP da home mobile é a primeira imagem da grade do catálogo; o do detalhe, a imagem principal. O LCP não pode ser descoberto no HTML inicial (SPA sem SSR), por isso a auditoria `lcp-discovery` continua falhando. O MSW não foi desligado nem adiado: ele é a demonstração, e as requisições não podem sair antes de o worker controlar a página.
-- **Otimizações da revisão:**
-  - `public/robots.txt`: antes, o fallback da SPA devolvia o `index.html` em `/robots.txt` (41 erros de sintaxe). Agora o arquivo libera o site e exclui as rotas privadas e de autenticação. SEO 92 → 100. Na Vercel, arquivos estáticos têm precedência sobre o rewrite.
-  - Os dois primeiros cards da grade (a primeira linha no celular) carregam com `loading="eager"` e `fetchpriority="high"`; antes, a imagem do LCP era `lazy`. O atraso de renderização do LCP da home caiu de cerca de 390 ms para cerca de 230–260 ms.
-- **Testado e descartado:** `modulepreload` do chunk do MSW no `index.html` (plugin do Vite), para baixá-lo junto com o entry. Em A/B no mesmo ambiente: LCP 0,1–0,4 s melhor, mas FCP 0,2–0,4 s pior (os dois downloads disputam a banda simulada) e nota +1–2, dentro da oscilação. Sem ganho demonstrável, o plugin não foi mantido.
-- **Fontes:** Roboto Mono do próprio bundle, subset latin, `font-display: swap` (auditoria `font-display` aprovada); não estão no caminho crítico do LCP.
-- **Corrigido pela sondagem:** o detalhe tinha CLS de 0,55 no desktop. A largura da galeria dependia da imagem, e o rodapé subia e descia enquanto a página carregava. A home tinha 0,16, porque os indicadores do carrossel surgiam depois dos dados. Os três casos agora reservam o espaço. A acessibilidade mobile subiu de 97–99 para 100: os indicadores do banner ficavam sob o link "Explorar" (alvo de toque pequeno), e os títulos da aba pulavam um nível.
+- **Meta de Performance ≥ 90: não atingida no mobile.** As medianas ficam em 70 (início) e 71 (detalhe). No desktop, a mediana é 97 nas duas páginas. Accessibility, Best Practices e SEO ficam em 100 nas quatro combinações (acima das metas de 95 / 95 / 90).
+- **Causa conhecida (MSW no caminho crítico):** no mobile (CPU 4× mais lenta e rede 4G simulada do preset Lighthouse), o primeiro render espera o chunk do MSW (cerca de 172 kB gzip, o maior do app, com cerca de 69 kB não usados no carregamento) e o registro do worker; só então as queries começam e as imagens são descobertas. O LCP da home mobile é a primeira imagem da grade do catálogo; o do detalhe, a imagem principal. O LCP não pode ser descoberto no HTML inicial (SPA sem SSR), por isso a auditoria `lcp-discovery` continua falhando. O MSW não foi desligado nem adiado: ele é a demonstração, e as requisições não podem sair antes de o worker controlar a página.
+- **Otimizações já aplicadas (mantidas na entrega):**
+  - `public/robots.txt` libera o site e exclui rotas privadas/autenticação (antes o rewrite da SPA devolvia `index.html` em `/robots.txt`). Na Vercel, arquivos estáticos têm precedência sobre o rewrite.
+  - Os dois primeiros cards da grade carregam com `loading="eager"` e `fetchpriority="high"`, para o LCP da home não depender de imagem `lazy`.
+- **Testado e descartado:** `modulepreload` do chunk do MSW no `index.html` (plugin do Vite). Em A/B no mesmo tipo de ambiente, o LCP melhorava pouco e o FCP piorava ao disputar banda com o entry; sem ganho estável de nota, o plugin não foi mantido.
+- **Fontes:** Roboto Mono do próprio bundle, subset latin, `font-display: swap`; não estão no caminho crítico do LCP.
+- **CLS:** a galeria do detalhe e os indicadores do carrossel da home reservam espaço para evitar deslocamento; nas medianas da F8 o CLS mobile é 0 e o desktop da home é 0,004.
 
 ## 25. Carrinho: contratos, API e persistência (F3)
 
@@ -620,7 +618,7 @@ Execuções locais em 15/10/2026, mesmo ambiente das fases anteriores:
 - No detalhe do NFT, o login dentro da página remonta a tela e a edição escolhida volta à padrão.
 - A corrida em que o carrinho some entre a leitura e a transação da cotação está fechada por construção (revalidação dentro da transação), mas não pode ser provocada de fora no mock, porque o handler é síncrono entre a leitura e a transação; o teste cobre os caminhos de erro equivalentes (carrinho em outra revisão, inexistente, revisão 0).
 - O `nft.updated` de uma aba não chega a outra (abaixo); outra aba só vê a mudança ao refazer as queries.
-- A performance mobile fica em 72–77, abaixo da meta de 90, limitada pelo MSW antes do primeiro render (seção 24); uma API real removeria esse custo.
+- A performance mobile fica em 70–71 (medianas F8), abaixo da meta de 90, limitada pelo MSW antes do primeiro render (seção 24); uma API real removeria esse custo.
 - Um refetch da lista de favoritos disparado por outro motivo (reconciliação após reconexão) enquanto uma mudança está em voo pode mostrar o estado do servidor por um instante; o refetch feito ao fim da mudança corrige a tela. O botão continua travado durante esse intervalo.
 - `GET /__mock/network/activity` informa quando o mock **respondeu**; a entrega ao `fetch` da página ainda passa pelo service worker. Os testes fazem mais uma chamada de controle (que passa pela mesma fila do worker) antes de conferir a tela.
 - A recusa de conexão do socket bloqueado depende do tratamento de frames inválidos do `engine.io-client` 6 / `engine.io-parser` 5 (D18). Uma atualização desses pacotes deve passar pelos testes `realtime-nft` e `realtime-poc`.

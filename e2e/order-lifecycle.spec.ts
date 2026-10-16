@@ -52,8 +52,8 @@ function orderStatus(page: Page) {
 }
 
 test.describe('Order lifecycle @orders', () => {
-  test('pending orders settle on time without being read, even after the page that created them is gone', async ({ page, context }) => {
-    await openApp(page)
+  test('pending orders settle on time without being read, even after the page that created them is gone', async ({ page, context }, testInfo) => {
+    await openApp(page, testInfo)
     const token = await apiToken(page, ANA)
 
     // confirm: settled by the mock on its own, no GET of the order.
@@ -98,7 +98,7 @@ test.describe('Order lifecycle @orders', () => {
     })
     await page.close()
     const next = await context.newPage()
-    await openApp(next)
+    await openApp(next, testInfo)
     // The timer may elapse while the next page initializes under load. What matters
     // is that the order settles without a client order read, not an instantaneous
     // observation of its short-lived pending state.
@@ -165,7 +165,7 @@ test.describe('Order lifecycle @orders', () => {
   })
 
   test('a pending order is recovered after a refresh and a missed settlement is reconciled on reconnection', async ({ page }, testInfo) => {
-    await openApp(page)
+    await openApp(page, testInfo)
     await setOrderScenario(page, { payment: 'hold' })
     const { orderId } = await placeOrderFromCheckout(page, testInfo)
 
@@ -180,7 +180,7 @@ test.describe('Order lifecycle @orders', () => {
     await expect(orderStatus(page)).toHaveAttribute('data-status', 'pending')
 
     // Opening the app elsewhere recovers the pending order from the server.
-    await openApp(page)
+    await openApp(page, testInfo)
     const notice = page.getByTestId('order-notice').and(page.locator(`[data-order-id="${orderId}"]`))
     await expect(notice).toHaveAttribute('data-status', 'pending')
     await expect(notice).toContainText('Ainda não há confirmação.')
@@ -209,7 +209,7 @@ test.describe('Order lifecycle @orders', () => {
   })
 
   test('after a refresh, an attempt whose answer was lost finds its order instead of sending again', async ({ page }, testInfo) => {
-    await openApp(page)
+    await openApp(page, testInfo)
     await setOrderScenario(page, { payment: 'hold' })
     await login(page, ANA)
     await addFromDetail(page, testInfo, VELVET_OPEN, 1)
@@ -246,7 +246,7 @@ test.describe('Order lifecycle @orders', () => {
   })
 
   test('after a refresh, an attempt whose order already settled and emptied the cart still leads to that order', async ({ page }, testInfo) => {
-    await openApp(page)
+    await openApp(page, testInfo)
     await setOrderScenario(page, {})
     await login(page, ANA)
     await addFromDetail(page, testInfo, VELVET_OPEN, 1)
@@ -281,12 +281,12 @@ test.describe('Order lifecycle @orders', () => {
   })
 
   test("another user's order events never reach the current user's screen", async ({ page }, testInfo) => {
-    await openApp(page)
+    await openApp(page, testInfo)
     await setOrderScenario(page, { payment: 'hold' })
     const { orderId } = await placeOrderFromCheckout(page, testInfo)
     await expect(orderStatus(page)).toHaveAttribute('data-status', 'pending')
 
-    await logout(page)
+    await logout(page, testInfo)
     await login(page, BRUNO)
     await expect(page.getByTestId('realtime-identity')).toHaveText(BRUNO.id)
     await expect(page.getByTestId('order-notice')).toHaveCount(0)
@@ -308,8 +308,8 @@ test.describe('Order lifecycle @orders', () => {
     expect(await requestCount(page, ONE_ORDER_READS)).toBe(reads)
   })
 
-  test('the server refuses a wallet or a network the order cannot use', async ({ page }) => {
-    await openApp(page)
+  test('the server refuses a wallet or a network the order cannot use', async ({ page }, testInfo) => {
+    await openApp(page, testInfo)
     const token = await apiToken(page, ANA)
     const quote = await quoteWith(page, token, VELVET_OPEN, 1)
     const send = (key: string, overrides: Record<string, unknown>) =>

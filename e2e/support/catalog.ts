@@ -35,7 +35,31 @@ export function searchBox(page: Page): Locator {
   return page.getByRole('searchbox', { name: 'Buscar NFTs' }).filter({ visible: true })
 }
 
+/**
+ * Ensures the catalog search is on screen. After a mobile login the app may still be
+ * on /account/* (no tab bar); Voltar / Início restore browsing without assuming chrome.
+ */
+export async function ensureCatalogReady(page: Page) {
+  const box = searchBox(page)
+  if (await box.isVisible()) return
+
+  const back = page.getByRole('button', { name: 'Voltar' })
+  if (await back.isVisible()) {
+    await back.click()
+    if (await box.isVisible()) return
+  }
+
+  const homeTab = page.getByRole('navigation', { name: 'Atalhos' }).getByRole('link', { name: 'Início' })
+  if (await homeTab.isVisible()) {
+    await homeTab.click()
+  } else {
+    await page.goto('/')
+  }
+  await expect(box).toBeVisible()
+}
+
 export async function searchCatalog(page: Page, term: string) {
+  await ensureCatalogReady(page)
   const box = searchBox(page)
   await box.fill(term)
   await box.press('Enter')

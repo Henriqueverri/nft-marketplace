@@ -57,26 +57,109 @@ export async function login(page: Page, account: { email: string; password: stri
 
 /**
  * Opens login without a full reload when possible (cart/favorites races need an in-app switch).
- * Desktop: header "Entrar". Mobile has no top bar (Figma) — the profile tab redirects to /login.
+ * Desktop: visible header "Entrar". Mobile: the same header Link is CSS-hidden (Figma has
+ * no top bar) — force-click it so login keeps the current-page redirect (home → /, detail
+ * → detail) instead of the profile tab's redirect=/account/profile, which leaves tests
+ * stuck on the account shell without the browsing tab bar or catalog search.
+ *
+ * Locates via CSS: getByRole skips display:none nodes, which is the mobile header.
  */
 export async function openLogin(page: Page) {
-  const headerLogin = page.getByRole('navigation', { name: 'Principal' }).getByRole('link', { name: 'Entrar' })
+  const headerLogin = page.locator('header nav[aria-label="Principal"] a').filter({ hasText: /^Entrar$/ })
   if (await headerLogin.isVisible()) {
     await headerLogin.click()
+  } else if (await headerLogin.count()) {
+    // Mobile: header is display:none — Playwright cannot action it even with force.
+    // Native click still runs the TanStack Link handler (SPA, correct redirect search).
+    await headerLogin.evaluate((element) => (element as HTMLAnchorElement).click())
   } else {
-    // Mobile has no header "Entrar": the profile tab hits the auth guard when signed out.
-    const profileTab = page.getByRole('navigation', { name: 'Atalhos' }).getByRole('link', { name: 'Meu perfil' })
-    if (await profileTab.isVisible()) {
-      await profileTab.click()
-    } else {
-      await page.goto('/login')
-    }
+    await page.goto('/login')
   }
   await expect(page.getByRole('heading', { level: 1, name: 'Entrar' })).toBeVisible()
 }
 
-export async function logout(page: Page) {
-  // Desktop header and account sidebar both expose "Sair".
-  await page.getByRole('button', { name: 'Sair' }).first().click()
+/**
+ * Opens the account profile using whatever chrome is available: browsing tab, footer,
+ * account switcher ("Perfil" / "Dados do perfil"), or a direct navigation. No-ops when
+ * already there.
+ */
+export async function openAccountProfile(page: Page) {
+  if (/\/account\/profile\/?$/.test(new URL(page.url()).pathname)) return
+
+  const browsingTab = page.getByRole('navigation', { name: 'Atalhos' }).getByRole('link', { name: 'Meu perfil' })
+  const footerOrChrome = page.getByRole('link', { name: 'Meu perfil', exact: true }).filter({ visible: true }).first()
+  const accountLink = page
+    .getByRole('navigation', { name: 'Conta' })
+    .getByRole('link', { name: /^(Perfil|Dados do perfil)$/ })
+
+  if (await browsingTab.isVisible()) {
+    await browsingTab.click()
+  } else if (await footerOrChrome.isVisible()) {
+    await footerOrChrome.click()
+  } else if (await accountLink.first().isVisible()) {
+    await accountLink.first().click()
+  } else {
+    await page.goto('/account/profile')
+  }
+  await expect(page).toHaveURL(/\/account\/profile$/)
+}
+
+/**
+ * Opens the favorites list: browsing tab, footer, account switcher ("Favoritos" on
+ * mobile / full label on desktop), or a direct navigation.
+ */
+export async function openFavorites(page: Page) {
+  if (/\/account\/favorites\/?$/.test(new URL(page.url()).pathname)) {
+    await expect(page.getByRole('heading', { level: 1, name: 'Lista de interesse' })).toBeVisible()
+    return
+  }
+
+  const browsingTab = page
+    .getByRole('navigation', { name: 'Atalhos' })
+    .getByRole('link', { name: 'Lista de interesse' })
+  const footerOrChrome = page
+    .getByRole('link', { name: 'Lista de interesse', exact: true })
+    .filter({ visible: true })
+    .first()
+  const accountLink = page
+    .getByRole('navigation', { name: 'Conta' })
+    .getByRole('link', { name: /^(Favoritos|Lista de interesse)$/ })
+
+  if (await browsingTab.isVisible()) {
+    await browsingTab.click()
+  } else if (await footerOrChrome.isVisible()) {
+    await footerOrChrome.click()
+  } else if (await accountLink.first().isVisible()) {
+    await accountLink.first().click()
+  } else {
+    await page.goto('/account/favorites')
+  }
+  await expect(page).toHaveURL(/\/account\/favorites$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Lista de interesse' })).toBeVisible()
+}
+
+export async function logout(page: Page, testInfo: TestInfo) {
+  if (isMobile(testInfo)) {
+    // Prefer visible account-shell "Sair"; otherwise the CSS-hidden header button (same
+    // pattern as openLogin) so detail/cart screens logout without a full reload.
+    const visibleSair = page.getByRole('button', { name: 'Sair' })
+    if (await visibleSair.first().isVisible()) {
+      await visibleSair.first().click()
+    } else {
+      const headerSair = page
+        .locator('header nav[aria-label="Principal"] button')
+        .filter({ hasText: /^(Sair|Saindo…)$/ })
+      if (await headerSair.count()) {
+        await headerSair.evaluate((element) => (element as HTMLButtonElement).click())
+      } else {
+        await page.goto('/account/profile')
+        await expect(visibleSair.first()).toBeVisible()
+        await visibleSair.first().click()
+      }
+    }
+  } else {
+    // Desktop: header and account sidebar both expose "Sair".
+    await page.getByRole('button', { name: 'Sair' }).first().click()
+  }
   await expect(page.getByTestId('session-user')).toHaveText('visitante')
 }

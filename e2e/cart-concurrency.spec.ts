@@ -1,15 +1,15 @@
-import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { ANA, BRUNO, fillLogin, login, logout, openLogin } from './support/auth'
 import {
   addFromDetail,
   cartItem,
   cartItems,
-  cartLink,
   expectBadge,
   expectSummaryMatchesQuote,
   GOLDEN_OPEN,
   guestCartId,
   itemQuantity,
+  openCartInApp,
   serverCarts,
   settledQuoteId,
   VELVET_OPEN,
@@ -39,15 +39,6 @@ async function openDetail(page: Page, entry: SeedEdition) {
   await editions.locator('label').filter({ hasText: name }).click()
   await expect(editions.getByRole('radio', { name })).toBeChecked()
   await waitForMockIdle(page)
-}
-
-/** In-app navigation to the cart (the mobile detail page has no tab bar: through the home). */
-async function openCartInApp(page: Page, testInfo: TestInfo) {
-  if (!(await cartLink(page, testInfo).isVisible())) {
-    await page.getByRole('navigation', { name: 'Principal' }).getByRole('link', { name: 'KURIO' }).click()
-  }
-  await cartLink(page, testInfo).click()
-  await expect(page).toHaveURL(/\/cart$/)
 }
 
 function buyButton(page: Page) {
@@ -99,7 +90,7 @@ test.describe('Cart concurrency @cart', () => {
     test.slow()
     await login(page, ANA)
     await addFromDetail(page, testInfo, VELVET_OPEN)
-    await logout(page)
+    await logout(page, testInfo)
     await openDetail(page, GOLDEN_OPEN)
     const reads = () => requestCount(page, /^GET \/api\/cart$/)
     const readsBefore = await reads()
@@ -274,7 +265,7 @@ test.describe('Cart concurrency @cart', () => {
       .getByRole('button', { name: `Aumentar quantidade de ${VELVET_OPEN.nft.name}` })
       .click()
     await updateNftPrice(page, VELVET_OPEN.nft.id, VELVET_OPEN.price)
-    await logout(page)
+    await logout(page, testInfo)
     await signInInApp(page, BRUNO)
     await openCartInApp(page, testInfo)
     await expect(page.getByTestId('cart-empty')).toBeVisible()

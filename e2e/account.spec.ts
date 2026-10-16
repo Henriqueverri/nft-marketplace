@@ -40,7 +40,7 @@ test.describe('account @account', () => {
     await expect(name).toHaveValue('Ana Curadora')
   })
 
-  test('wrong current password is associated with its field and a new password works', async ({ page }) => {
+  test('wrong current password is associated with its field and a new password works', async ({ page }, testInfo) => {
     await login(page, ANA, '/login?redirect=/account/profile')
     const current = page.getByLabel('Senha atual', { exact: true })
     const next = page.getByLabel('Nova senha', { exact: true })
@@ -59,7 +59,7 @@ test.describe('account @account', () => {
     await page.getByRole('button', { name: 'Alterar senha' }).click()
     await expect(page.getByTestId('announcer')).toContainText('Senha alterada com sucesso.')
     await expect(current).toHaveValue('')
-    await logout(page)
+    await logout(page, testInfo)
     await openLogin(page)
     await fillLogin(page, ANA.email, 'nova-kurio-2027')
     await expect(page.getByTestId('session-user')).toHaveText(`@${ANA.username}`)
@@ -120,7 +120,7 @@ test.describe('account @account', () => {
     await expect(page.getByRole('radio', { name: /Carteira de compras · Principal/ })).toBeChecked()
   })
 
-  test('profile and wallets stay isolated between users', async ({ page }) => {
+  test('profile and wallets stay isolated between users', async ({ page }, testInfo) => {
     await login(page, ANA, '/login?redirect=/account/profile')
     await page.getByLabel('Nome de exibição').fill('Ana Isolada')
     await page.getByRole('button', { name: 'Salvar nome' }).click()
@@ -128,7 +128,7 @@ test.describe('account @account', () => {
     await page.getByLabel('Apelido da carteira principal').fill('Segredo da Ana')
     await page.getByRole('button', { name: 'Salvar carteira principal' }).click()
 
-    await logout(page)
+    await logout(page, testInfo)
     await openLogin(page)
     await fillLogin(page, BRUNO.email, BRUNO.password)
     await page.goto('/account/profile')

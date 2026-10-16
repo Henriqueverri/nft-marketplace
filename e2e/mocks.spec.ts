@@ -1,5 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { ANA, fillLogin, login, logout, openLogin, signupButtonName } from './support/auth'
+import { setScenario } from './support/catalog'
 import { callMockControl, DB_STORAGE_KEY, SESSION_STORAGE_KEY, type MockStateSummary } from './support/mock-control'
 
 async function signup(page: Page, testInfo: TestInfo, account: { username: string; email: string; password: string }) {
@@ -18,11 +19,32 @@ async function renameProfile(page: Page, displayName: string) {
   await expect(page.getByTestId('profile-display-name')).toHaveText(displayName)
 }
 
-async function applyScenario(page: Page, scenario: { latency?: string; failure: string }) {
-  if (scenario.latency) await page.getByLabel('Latência').selectOption({ label: scenario.latency })
-  await page.getByLabel('Falha da API').selectOption({ label: scenario.failure })
-  await page.getByRole('button', { name: 'Aplicar cenário' }).click()
-  await expect(page.getByTestId('scenario-current')).toContainText(scenario.failure)
+const FAILURE_LABEL = {
+  none: 'Nenhuma falha',
+  'server-error': 'Erro interno (500)',
+  unavailable: 'Serviço indisponível (503)',
+  offline: 'Sem rede',
+} as const
+
+/**
+ * Applies a mock scenario through the control API (DemoPanel is off-canvas and not
+ * clickable). The panel still mirrors state via scenario-current for assertions.
+ */
+async function applyScenario(
+  page: Page,
+  scenario: { latencyMs?: number; failure: keyof typeof FAILURE_LABEL },
+) {
+  // Control routes are served by MSW; wait until the worker is answering before PUT.
+  await expect(page.getByTestId('storage-state')).toContainText('ok')
+  await setScenario(page, { latencyMs: scenario.latencyMs ?? 100, failure: scenario.failure })
+  await expect(page.getByTestId('scenario-current')).toContainText(FAILURE_LABEL[scenario.failure])
+}
+
+/** Same outcome as "Restaurar estado inicial": seed + default scenario, end session, go home. */
+async function resetMockState(page: Page) {
+  await callMockControl(page, '/__mock/reset', 'POST')
+  await page.evaluate((key) => localStorage.removeItem(key), SESSION_STORAGE_KEY)
+  await page.goto('/')
 }
 
 /**
@@ -43,13 +65,13 @@ test.describe('mock database and scenarios @mocks', () => {
   test('reset restores the seed, the default scenario and ends the session', async ({ page }, testInfo) => {
     await signup(page, testInfo, DIEGO)
     await expect(page.getByTestId('session-user')).toHaveText(`@${DIEGO.username}`)
-    await logout(page)
+    await logout(page, testInfo)
     await login(page, ANA)
     await renameProfile(page, 'Ana Alterada')
-    await applyScenario(page, { latency: '800 ms', failure: 'Nenhuma falha' })
+    await applyScenario(page, { latencyMs: 800, failure: 'none' })
     await expect(page.getByTestId('mock-users-count')).toHaveText('3')
 
-    await page.getByRole('button', { name: 'Restaurar estado inicial' }).click()
+    await resetMockState(page)
     await expect(page).toHaveURL((url) => url.pathname === '/')
     await expect(page.getByTestId('session-user')).toHaveText('visitante')
     await expect(page.getByTestId('mock-users-count')).toHaveText('2')
@@ -70,7 +92,7 @@ test.describe('mock database and scenarios @mocks', () => {
     await page.reload()
     await expect(page.getByTestId('profile-display-name')).toHaveText('Diego Persistido')
 
-    await logout(page)
+    await logout(page, testInfo)
     await page.reload()
     await login(page, { ...DIEGO, username: DIEGO.username })
     await page.getByRole('link', { name: 'Meu perfil' }).click()
@@ -114,14 +136,14 @@ test.describe('mock database and scenarios @mocks', () => {
 
   test('API failures from the scenario panel give visible feedback and recover', async ({ page }) => {
     await page.goto('/')
-    await applyScenario(page, { failure: 'Erro interno (500)' })
+    await applyScenario(page, { failure: 'server-error' })
     await openLogin(page)
     await fillLogin(page, ANA.email, ANA.password)
     await expect(page.getByRole('alert')).toHaveText('Erro interno simulado pelo cenário de falha.')
 
     await closeAuthDialogIfOpen(page)
     await page.goto('/')
-    await applyScenario(page, { failure: 'Sem rede' })
+    await applyScenario(page, { failure: 'offline' })
     await openLogin(page)
     await fillLogin(page, ANA.email, ANA.password)
     await expect(page.getByRole('alert')).toHaveText('Sem conexão com o servidor. Verifique sua rede e tente novamente.')
@@ -129,16 +151,16 @@ test.describe('mock database and scenarios @mocks', () => {
 
     await closeAuthDialogIfOpen(page)
     await page.goto('/')
-    await applyScenario(page, { failure: 'Nenhuma falha' })
+    await applyScenario(page, { failure: 'none' })
     await openLogin(page)
     await fillLogin(page, ANA.email, ANA.password)
     await expect(page.getByTestId('session-user')).toHaveText(`@${ANA.username}`)
 
     // A private screen under an unavailable API shows the error and a retry.
-    await applyScenario(page, { failure: 'Serviço indisponível (503)' })
+    await applyScenario(page, { failure: 'unavailable' })
     await page.getByRole('link', { name: 'Meu perfil' }).click()
     await expect(page.getByRole('alert')).toContainText('Serviço temporariamente indisponível.', { timeout: 15_000 })
-    await applyScenario(page, { failure: 'Nenhuma falha' })
+    await applyScenario(page, { failure: 'none' })
     await page.getByRole('button', { name: 'Tentar novamente' }).click()
     await expect(page.getByTestId('profile-email')).toHaveText(ANA.email)
   })
@@ -207,7 +229,7 @@ test.describe('mock database and scenarios @mocks', () => {
       await expect(page.getByTestId('storage-state')).toHaveText('corrompido')
 
       await closeAuthDialogIfOpen(page)
-      await page.getByRole('button', { name: 'Restaurar estado inicial' }).click()
+      await resetMockState(page)
       await expect(page.getByTestId('storage-state')).toContainText('ok')
       await login(page, ANA)
     })

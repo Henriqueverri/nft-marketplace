@@ -2,7 +2,7 @@
 
 Implementação do desafio frontend da Jungle Gaming (enunciado em [`docs/challenge.md`](docs/challenge.md)), com React, TypeScript, TanStack Router, TanStack Query, Axios, Socket.IO, Tailwind CSS, shadcn/ui, MSW e Playwright.
 
-> **Status: Fase F5B (histórico de pedidos), aguardando revisão.** A área autenticada reúne perfil, carteiras e pedidos do usuário. O histórico acompanha os estados da F4 em tempo real e reutiliza a tela existente de detalhes/recibo. F6 não faz parte desta fase. Decisões e limitações estão em [`ARCHITECTURE.md`](ARCHITECTURE.md).
+> **Demonstração pública:** [https://nft-marketplace-iota-three.vercel.app](https://nft-marketplace-iota-three.vercel.app) (Vercel, com deploy automático). O build publicado usa os mocks MSW e o tempo real simulado. Decisões, limitações e desvios do Figma estão em [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Requisitos
 
@@ -37,14 +37,17 @@ Arquivos `*.local` (por exemplo, `.env.local`) são ignorados pelo git e nunca e
 - `npm run verify`: typecheck, lint e build, nesta ordem.
 - `npm run test:e2e`: todos os testes Playwright (builda e sobe o preview automaticamente).
 - `npm run test:e2e:smoke`: apenas os testes marcados com `@smoke`.
-- `npm run test:e2e:deploy`: smoke contra o deploy; exige `PLAYWRIGHT_BASE_URL`.
+- `npm run test:e2e:deploy`: smoke contra um ambiente publicado; exige `PLAYWRIGHT_BASE_URL` (use a URL pública abaixo).
 - `npm run test:e2e:report`: abre o último relatório HTML.
-- `npm run lighthouse`: coleta F8 em lotes de três rodadas para uma página/perfil contra um preview já em execução. Exemplo: `npm run lighthouse -- --collection f8-<id> --page home --preset mobile http://127.0.0.1:4173`. Repita para `home/detail` × `mobile/desktop`, então gere `npm run lighthouse -- --collection f8-<id> --summary`. Cada coleção fica em `lighthouse/f8-<id>/`; o resumo só é escrito quando os 12 relatórios forem válidos.
+- `npm run lighthouse`: coleta F8 em lotes de três rodadas para uma página/perfil contra um preview já em execução. Exemplo: `npm run lighthouse -- --collection f8-<id> --page home --preset mobile http://127.0.0.1:4173`. Repita para `home/detail` × `mobile/desktop`, então gere `npm run lighthouse -- --collection f8-<id> --summary`. Novas coleções ficam em `lighthouse/f8-<id>/` (ignoradas pelo Git, exceto a entrega abaixo).
+- Relatórios Lighthouse entregues (§10): [`lighthouse/f8-2026-10-15-final-2/`](lighthouse/f8-2026-10-15-final-2/) — 12 pares HTML/JSON (home e detalhe × mobile e desktop × 3 rodadas) e [`summary.md`](lighthouse/f8-2026-10-15-final-2/summary.md) com medianas, LCP, CLS, TBT, ambiente e condições. A análise dos resultados abaixo da meta de Performance está em [`ARCHITECTURE.md`](ARCHITECTURE.md) (seção 24).
 
 ### Testar o deploy
 
+Smoke na demonstração pública (opcionalmente confere se o commit publicado é o `HEAD` local):
+
 ```bash
-PLAYWRIGHT_BASE_URL=https://<sua-url>.vercel.app \
+PLAYWRIGHT_BASE_URL=https://nft-marketplace-iota-three.vercel.app \
 EXPECTED_COMMIT_SHA=$(git rev-parse HEAD) \
 npm run test:e2e:deploy
 ```
@@ -121,13 +124,15 @@ await (await fetch('/__mock/scenario', {
 
 ## Deploy (Vercel)
 
+URL pública: [https://nft-marketplace-iota-three.vercel.app](https://nft-marketplace-iota-three.vercel.app). O deploy automático na Vercel está configurado para este repositório.
+
 A configuração está em [`vercel.json`](vercel.json):
 - `npm ci` e `npm run build`, com saída em `dist`.
 - Rewrite de todas as rotas para `index.html`, para que acesso direto e refresh funcionem. Os arquivos estáticos existentes têm prioridade.
 - `Cache-Control: no-cache, no-store, must-revalidate` em `/mockServiceWorker.js`, para que um worker antigo nunca fique em cache.
 - Cache imutável para `/assets/*`, que têm hash no nome.
 
-Para publicar: importar o repositório no painel da Vercel (preset Vite). Nenhuma variável precisa ser configurada.
+Nenhuma variável de ambiente precisa ser configurada no painel da Vercel além do que já está nos arquivos `.env*` versionados.
 
 ## Estrutura
 

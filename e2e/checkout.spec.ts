@@ -279,6 +279,48 @@ test.describe('Checkout @checkout', () => {
     expect((await serverOrders(page)).map((order) => order.orderId)).toEqual([orderId])
   })
 
+  test('nft.updated during checkout refreshes the quote over Socket.IO and confirms only the new total @realtime', async ({
+    page,
+  }, testInfo) => {
+    await openCheckout(page, testInfo)
+    await expect(page.getByTestId('realtime-state')).toHaveText('conectado')
+    await expect(page.getByTestId('realtime-identity')).toHaveText(ANA.id)
+
+    const firstQuoteId = await expectReviewMatchesQuote(page)
+    const previous = await recordedQuote(page, firstQuoteId)
+    expect(previous.lines[0].unitPriceEth).toBe('0.1')
+    const appliedBefore = Number(await page.getByTestId('realtime-events-applied').textContent())
+
+    // Socket stays up: the mock emits nft.updated and the client receives it.
+    const update = await updateNftPrice(page, VELVET_OPEN.nft.id, '0.15')
+    expect(update.delivered).toBeGreaterThan(0)
+    await expect(page.getByTestId('realtime-state')).toHaveText('conectado')
+    await expect(page.getByTestId('realtime-events-applied')).toHaveText(String(appliedBefore + 1))
+
+    // The quote on screen is dropped and replaced; the old total must not stay confirmable.
+    await expect(review(page)).not.toHaveAttribute('data-quote-id', firstQuoteId)
+    const priceNotice = `O preço de ${VELVET_OPEN.nft.name} (edição ${VELVET_OPEN.edition}) mudou de 0.10 ETH para 0.15 ETH.`
+    await expect(page.getByTestId('announcer')).toContainText(priceNotice)
+
+    const freshQuoteId = await expectReviewMatchesQuote(page)
+    expect(freshQuoteId).not.toBe(firstQuoteId)
+    const fresh = await recordedQuote(page, freshQuoteId)
+    expect(fresh.lines[0].unitPriceEth).toBe('0.15')
+    expect(fresh.totalEth).not.toBe(previous.totalEth)
+    await expect(review(page).getByTestId('checkout-line')).toContainText(`× ${ethDisplay('0.15')}`)
+    await expect(page.getByTestId('quote-changed')).toHaveCount(0)
+    expect(await serverOrders(page)).toHaveLength(0)
+    expect(await requestCount(page, ORDER_POSTS)).toBe(0)
+
+    // Recovery: confirm only after the new quote is the one on screen.
+    await connectWallet(page)
+    await confirmButton(page).click()
+    const orderId = await expectOrderPage(page, 'pending')
+    await expect(page.getByTestId('order-total')).toHaveText(ethDisplay(fresh.totalEth))
+    expect((await serverOrders(page)).map((order) => order.orderId)).toEqual([orderId])
+    expect(await requestCount(page, ORDER_POSTS)).toBe(1)
+  })
+
   test('a pending order stays pending and a rejected one is never shown as confirmed', async ({ page }, testInfo) => {
     await openCheckout(page, testInfo)
     await setScenario(page, { payment: 'hold' })

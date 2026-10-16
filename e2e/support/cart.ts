@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, type TestInfo } from '@playwright/test'
 import { isMobile } from './auth'
-import { callMockControl } from './mock-control'
+import { callMockControl, SESSION_STORAGE_KEY } from './mock-control'
 
 /**
  * Seed editions used by the cart tests (src/mocks/db/seed.ts), duplicated on purpose:
@@ -127,27 +127,90 @@ export function cartLink(page: Page, testInfo: TestInfo): Locator {
   return nav.getByRole('link', { name: /^Carrinho/ })
 }
 
+/**
+ * In-app navigation to the cart. Mobile detail/account screens hide the tab bar
+ * (Voltar / Início restore browsing chrome — same pattern as ensureCatalogReady).
+ */
+export async function openCartInApp(page: Page, testInfo: TestInfo) {
+  if (!(await cartLink(page, testInfo).isVisible())) {
+    if (isMobile(testInfo)) {
+      const back = page.getByRole('button', { name: 'Voltar' })
+      if (await back.isVisible()) {
+        await back.click()
+      }
+      if (!(await cartLink(page, testInfo).isVisible())) {
+        const homeTab = page.getByRole('navigation', { name: 'Atalhos' }).getByRole('link', { name: 'Início' })
+        if (await homeTab.isVisible()) {
+          await homeTab.click()
+        } else {
+          await page.goto('/')
+        }
+      }
+    } else {
+      await page.getByRole('navigation', { name: 'Principal' }).getByRole('link', { name: 'KURIO' }).click()
+    }
+  }
+  await cartLink(page, testInfo).click()
+  await expect(page).toHaveURL(/\/cart$/)
+}
+
+/**
+ * userId from `kurio:session` (`{ token, userId }`). Missing / invalid session → guest cart.
+ */
+function sessionUserId(raw: string | null): string | null {
+  if (!raw) return null
+  try {
+    const session = JSON.parse(raw) as { userId?: unknown }
+    return typeof session.userId === 'string' && session.userId ? session.userId : null
+  } catch {
+    return null
+  }
+}
+
 /** Total quantity in the active cart (guest or signed-in), via the mock control API. */
 async function serverCartQuantity(page: Page): Promise<number> {
   const carts = await serverCarts(page)
-  const sessionRaw = await page.evaluate(() => window.localStorage.getItem('kurio:session'))
-  if (sessionRaw) {
-    const session = JSON.parse(sessionRaw) as { user?: { id?: string } }
-    const userId = session.user?.id
-    if (userId && carts.users[userId]) {
-      return carts.users[userId].items.reduce((sum, item) => sum + item.quantity, 0)
-    }
+  const sessionRaw = await page.evaluate((key) => window.localStorage.getItem(key), SESSION_STORAGE_KEY)
+  const userId = sessionUserId(sessionRaw)
+  if (userId) {
+    const userCart = carts.users[userId]
+    return userCart?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0
   }
   const cartId = await guestCartId(page)
   if (!cartId || !carts.guests[cartId]) return 0
   return carts.guests[cartId].items.reduce((sum, item) => sum + item.quantity, 0)
 }
 
+/** Mobile routes that omit the tab bar (Figma screens with "Voltar"). */
+function mobileTabBarHidden(pathname: string): boolean {
+  return (
+    pathname === '/cart' ||
+    pathname.startsWith('/nfts/') ||
+    pathname.startsWith('/account/') ||
+    pathname.startsWith('/checkout') ||
+    pathname === '/login' ||
+    pathname === '/signup'
+  )
+}
+
 export async function expectBadge(page: Page, testInfo: TestInfo, count: number) {
   const link = cartLink(page, testInfo)
-  // Mobile hides the tab bar on screens with "Voltar" (cart, detail, account…).
-  if (isMobile(testInfo) && !(await link.isVisible())) {
-    expect(await serverCartQuantity(page)).toBe(count)
+  // On those screens the badge is not in the DOM; the mock control is the source of truth.
+  // Prefer the path over a one-shot isVisible() so a slow tab-bar mount on home is not
+  // mistaken for a hidden bar (and so we poll until the server cart catches up).
+  if (isMobile(testInfo) && mobileTabBarHidden(new URL(page.url()).pathname)) {
+    // After a reload the service worker may briefly serve HTML for /__mock/*; wait until
+    // the demo panel can read mock state, then poll quantity (PATCH may still be in flight).
+    await expect(page.getByTestId('storage-state')).toContainText('ok')
+    await expect
+      .poll(async () => {
+        try {
+          return await serverCartQuantity(page)
+        } catch {
+          return Number.NaN
+        }
+      })
+      .toBe(count)
     return
   }
   if (count === 0) {

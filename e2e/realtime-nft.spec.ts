@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { ANA, BRUNO, fillLogin, login, logout, openLogin } from './support/auth'
 import {
   announcer,
@@ -25,8 +25,8 @@ const PRICE_READS = /^GET \/api\/(nfts|account\/favorites)/
 const CART_READS = /^(GET \/api\/cart|POST \/api\/quotes)/
 
 /** Client-side user switch (no reload), ending on the Emerald detail page. */
-async function switchUserTo(page: Page, user: typeof ANA) {
-  await logout(page)
+async function switchUserTo(page: Page, user: typeof ANA, testInfo: TestInfo) {
+  await logout(page, testInfo)
   await openLogin(page)
   await fillLogin(page, user.email, user.password)
   await expect(page.getByTestId('realtime-identity')).toHaveText(user.id)
@@ -201,7 +201,7 @@ test.describe('nft.updated over Socket.IO @realtime', () => {
       { user: BRUNO, price: '0.49' },
     ]
     for (const { user, price } of switches) {
-      await switchUserTo(page, user)
+      await switchUserTo(page, user, testInfo)
       await expect(page.getByTestId('realtime-state')).toHaveText('conectado')
       await expect(page.getByTestId('realtime-subscriptions')).toHaveText('1')
       const { connections } = await callMockControl<MockConnections>(page, '/__mock/socket/connections')

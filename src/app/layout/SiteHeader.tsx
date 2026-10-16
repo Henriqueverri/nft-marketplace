@@ -18,13 +18,14 @@ function useLogoutAndLeave() {
   const announce = useAnnounce()
   return {
     pending: logout.isPending,
-    run: () =>
+    run: () => {
+      announce('Você saiu da sua conta.')
       logout.mutate(undefined, {
         onSettled: async () => {
           await navigate({ to: '/', replace: true })
-          announce('Você saiu da sua conta.')
         },
-      }),
+      })
+    },
   }
 }
 
@@ -68,15 +69,16 @@ export function SiteHeader() {
     <header className="hidden px-6 pt-6 md:block xl:px-0">
       <nav
         aria-label="Principal"
-        className="mx-auto flex w-full max-w-[1200px] items-start justify-between gap-6"
+        className="mx-auto flex w-full max-w-[1200px] items-start justify-between gap-4 xl:gap-6"
       >
         <Link
           to="/"
-          className={cn('rounded-sm pt-2 text-body-14 font-bold tracking-[1.4px] text-cream', focusRing)}
+          className={cn('shrink-0 rounded-sm pt-2 text-body-14 font-bold tracking-[1.4px] text-cream', focusRing)}
         >
           KURIO
         </Link>
-        <ul className="flex items-start gap-10">
+        {/* md (768): tighter gaps so logo + links + signed-in actions fit; xl keeps Figma spacing. */}
+        <ul className="flex min-w-0 items-start gap-8 xl:gap-10">
           <li>
             <Link to="/" aria-current={pathname === '/' ? 'page' : undefined} className={itemClass(pathname === '/')}>
               Início
@@ -98,7 +100,7 @@ export function SiteHeader() {
             </button>
           </li>
         </ul>
-        <div className="flex items-center gap-7 self-center">
+        <div className="flex shrink-0 items-center gap-6 self-center xl:gap-7">
           <button
             type="button"
             aria-label="Buscar NFTs"

@@ -55,8 +55,10 @@ export function LoginForm({ variant, redirect, expired }: LoginFormProps) {
 
     login.mutate(parsed.data, {
       onSuccess: async (session) => {
-        await navigate({ href: redirect, replace: true })
+        // Announce before navigate: the session is already live (useLogin startSession),
+        // so waiting on navigate lets a later logout announce be overwritten by this one.
         announce(`Bem-vindo de volta, ${session.user.displayName}.`)
+        await navigate({ href: redirect, replace: true })
       },
       onError: (error) => {
         if (error instanceof ApiError && error.code === 'VALIDATION_FAILED') {

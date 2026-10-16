@@ -21,13 +21,16 @@ function useAccountLogout() {
   const announce = useAnnounce()
   return {
     pending: logout.isPending,
-    run: () =>
+    run: () => {
+      // Announce before mutate: ending the session unmounts this shell, and TanStack Query
+      // then skips the mutate onSettled observer — the welcome toast would be left showing.
+      announce('Você saiu da sua conta.')
       logout.mutate(undefined, {
         onSettled: async () => {
           await navigate({ to: '/', replace: true })
-          announce('Você saiu da sua conta.')
         },
-      }),
+      })
+    },
   }
 }
 

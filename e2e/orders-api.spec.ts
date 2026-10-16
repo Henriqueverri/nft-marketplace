@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
-import { ANA, BRUNO } from './support/auth'
+import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import { ANA, BRUNO, isMobile } from './support/auth'
 import { GOLDEN_OPEN, serverCarts, setStock, VELVET_OPEN, type SeedEdition } from './support/cart'
 import { updateNftPrice } from './support/catalog'
 import { callMockControl } from './support/mock-control'
@@ -61,9 +61,11 @@ interface ServerOrder {
   idempotencyKey: string
 }
 
-async function openApp(page: Page) {
+async function openApp(page: Page, testInfo: TestInfo) {
   await page.goto('/')
-  await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible()
+  // Desktop: Figma header. Mobile frames have no top bar — only the tab bar.
+  const nav = isMobile(testInfo) ? 'Atalhos' : 'Principal'
+  await expect(page.getByRole('navigation', { name: nav })).toBeVisible()
 }
 
 function call<T = OrderBody>(
@@ -154,8 +156,8 @@ const KEY_A = 'attempt-0000000000000001'
 const KEY_B = 'attempt-0000000000000002'
 
 test.describe('Order API @orders', () => {
-  test('the same Idempotency-Key and payload return the same order; another payload is a conflict', async ({ page }) => {
-    await openApp(page)
+  test('the same Idempotency-Key and payload return the same order; another payload is a conflict', async ({ page }, testInfo) => {
+    await openApp(page, testInfo)
     await setPayment(page, 'hold')
     const token = await tokenOf(page, ANA)
     await addItem(page, token, VELVET_OPEN, 2)
@@ -206,8 +208,8 @@ test.describe('Order API @orders', () => {
     ])
   })
 
-  test('a stale quote is refused with what changed, without ordering or consuming anything', async ({ page }) => {
-    await openApp(page)
+  test('a stale quote is refused with what changed, without ordering or consuming anything', async ({ page }, testInfo) => {
+    await openApp(page, testInfo)
     const token = await tokenOf(page, ANA)
     await addItem(page, token, VELVET_OPEN, 2)
     await addItem(page, token, GOLDEN_OPEN, 1)
@@ -263,8 +265,8 @@ test.describe('Order API @orders', () => {
     expect(created.body.receipt.totalEth).toBe(fresh.totalEth)
   })
 
-  test('an expired, unknown or mismatched quote is refused', async ({ page }) => {
-    await openApp(page)
+  test('an expired, unknown or mismatched quote is refused', async ({ page }, testInfo) => {
+    await openApp(page, testInfo)
     const token = await tokenOf(page, ANA)
     await addItem(page, token, VELVET_OPEN, 1)
     const quote = await quoteCart(page, token)
@@ -289,8 +291,8 @@ test.describe('Order API @orders', () => {
     expect(await serverOrders(page)).toHaveLength(0)
   })
 
-  test('orders are private: another user gets 403 and cannot use the quote; keys are per user', async ({ page }) => {
-    await openApp(page)
+  test('orders are private: another user gets 403 and cannot use the quote; keys are per user', async ({ page }, testInfo) => {
+    await openApp(page, testInfo)
     await setPayment(page, 'hold')
     const ana = await tokenOf(page, ANA)
     const bruno = await tokenOf(page, BRUNO)
@@ -327,8 +329,8 @@ test.describe('Order API @orders', () => {
     ])
   })
 
-  test('confirmation removes only what was bought; the receipt never follows the catalog; terminal states stay', async ({ page }) => {
-    await openApp(page)
+  test('confirmation removes only what was bought; the receipt never follows the catalog; terminal states stay', async ({ page }, testInfo) => {
+    await openApp(page, testInfo)
     await setPayment(page, 'hold')
     const token = await tokenOf(page, ANA)
     await addItem(page, token, VELVET_OPEN, 2)
@@ -383,8 +385,8 @@ test.describe('Order API @orders', () => {
     expect((await call(page, 'GET', `/api/orders/${created.body.orderId}`, { token })).body).toMatchObject({ status: 'confirmed', version: 2 })
   })
 
-  test('a declined payment or missing stock rejects the order and keeps the cart and the stock', async ({ page }) => {
-    await openApp(page)
+  test('a declined payment or missing stock rejects the order and keeps the cart and the stock', async ({ page }, testInfo) => {
+    await openApp(page, testInfo)
     await setPayment(page, 'reject')
     const token = await tokenOf(page, ANA)
     await addItem(page, token, VELVET_OPEN, 2)

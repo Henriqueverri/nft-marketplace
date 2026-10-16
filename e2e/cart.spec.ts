@@ -241,7 +241,7 @@ test.describe('Cart and quote @cart', () => {
     await addFromDetail(page, testInfo, GOLDEN_TEN)
     await expectBadge(page, testInfo, 1)
     expect(await guestCartId(page)).toBeNull()
-    await logout(page)
+    await logout(page, testInfo)
     // The account cart is not shown to the visitor.
     await expectBadge(page, testInfo, 0)
 
@@ -279,7 +279,7 @@ test.describe('Cart and quote @cart', () => {
     await expect(page.getByTestId('cart-notices')).toHaveCount(0)
 
     // Another account never sees it.
-    await logout(page)
+    await logout(page, testInfo)
     await expectBadge(page, testInfo, 0)
     await login(page, BRUNO, '/login?redirect=%2Fcart')
     await expect(page.getByTestId('cart-empty')).toBeVisible()
@@ -293,7 +293,7 @@ test.describe('Cart and quote @cart', () => {
     await login(page, ANA)
     await addFromDetail(page, testInfo, VELVET_OPEN, 2)
     await addFromDetail(page, testInfo, GOLDEN_TEN, 2)
-    await logout(page)
+    await logout(page, testInfo)
 
     await addFromDetail(page, testInfo, VELVET_OPEN, 2)
     await addFromDetail(page, testInfo, GOLDEN_TEN, 2)

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { ANA, BRUNO, login } from './support/auth'
 import { GOLDEN_OPEN, VELVET_OPEN, type SeedEdition } from './support/cart'
 import {
@@ -27,8 +27,8 @@ async function createHeldOrder(page: Page, token: string, edition: SeedEdition, 
   return result.body
 }
 
-async function createThreeStatuses(page: Page) {
-  await openApp(page)
+async function createThreeStatuses(page: Page, testInfo: TestInfo) {
+  await openApp(page, testInfo)
   const token = await apiToken(page, ANA)
   await setOrderScenario(page, { payment: 'hold' })
 
@@ -43,8 +43,8 @@ async function createThreeStatuses(page: Page) {
 }
 
 test.describe('Order history @orders-history', () => {
-  test('lists newest first with every status and opens the existing receipt', async ({ page }) => {
-    const created = await createThreeStatuses(page)
+  test('lists newest first with every status and opens the existing receipt', async ({ page }, testInfo) => {
+    const created = await createThreeStatuses(page, testInfo)
     await login(page, ANA, '/login?redirect=/account/orders')
 
     const items = page.getByTestId('order-history-item')
@@ -79,8 +79,8 @@ test.describe('Order history @orders-history', () => {
     await expect(explore).toHaveAttribute('href', '/#catalogo')
   })
 
-  test('does not expose another user orders', async ({ page }) => {
-    await openApp(page)
+  test('does not expose another user orders', async ({ page }, testInfo) => {
+    await openApp(page, testInfo)
     const token = await apiToken(page, ANA)
     await setOrderScenario(page, { payment: 'hold' })
     const anaOrder = await createHeldOrder(page, token, VELVET_OPEN, 'history-isolation-00001')
@@ -92,8 +92,8 @@ test.describe('Order history @orders-history', () => {
     await expect(page.getByRole('heading', { name: 'Pedido não encontrado' })).toBeVisible()
   })
 
-  test('updates a pending card through the existing order.updated flow', async ({ page }) => {
-    await openApp(page)
+  test('updates a pending card through the existing order.updated flow', async ({ page }, testInfo) => {
+    await openApp(page, testInfo)
     const token = await apiToken(page, ANA)
     await setOrderScenario(page, { payment: 'hold' })
     const order = await createHeldOrder(page, token, VELVET_OPEN, 'history-realtime-000001')

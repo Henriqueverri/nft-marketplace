@@ -1,5 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
-import { ANA, BRUNO, fillLogin, isMobile, login, logout, openLogin } from './support/auth'
+import { ANA, BRUNO, fillLogin, isMobile, login, logout, openFavorites, openLogin } from './support/auth'
 import {
   announcer,
   catalogCard,
@@ -35,12 +35,6 @@ function detailFavorite(page: Page, testInfo: TestInfo) {
 async function expectFavorite(page: Page, name: string, pressed: boolean) {
   await searchCatalog(page, name)
   await expect(cardFavorite(page, name)).toHaveAttribute('aria-pressed', String(pressed))
-}
-
-async function openFavorites(page: Page) {
-  await page.getByRole('link', { name: 'Lista de interesse', exact: true }).filter({ visible: true }).first().click()
-  await expect(page).toHaveURL(/\/account\/favorites$/)
-  await expect(page.getByRole('heading', { level: 1, name: 'Lista de interesse' })).toBeVisible()
 }
 
 function savedNames(page: Page) {
@@ -190,7 +184,7 @@ test.describe('favorites @favorites', () => {
     await expect.poll(() => userFavorites(page, ANA.id)).toEqual([EMERALD.id, ...ANA_FAVORITES].sort())
   })
 
-  test('a change still pending when the user switches never reaches the new session', async ({ page }) => {
+  test('a change still pending when the user switches never reaches the new session', async ({ page }, testInfo) => {
     await login(page, ANA)
     await page.goto('/?q=emerald')
     const button = cardFavorite(page, EMERALD.name)
@@ -199,7 +193,7 @@ test.describe('favorites @favorites', () => {
     await button.click()
     await expect(button).toHaveAttribute('aria-pressed', 'true')
 
-    await logout(page)
+    await logout(page, testInfo)
     await openLogin(page)
     await fillLogin(page, BRUNO.email, BRUNO.password)
     await expect(page.getByTestId('session-user')).toHaveText(`@${BRUNO.username}`)
@@ -218,7 +212,7 @@ test.describe('favorites @favorites', () => {
     expect(await userFavorites(page, ANA.id)).toEqual(ANA_FAVORITES)
   })
 
-  test('favorites are isolated per user and follow a user switch without a refresh', async ({ page }) => {
+  test('favorites are isolated per user and follow a user switch without a refresh', async ({ page }, testInfo) => {
     await login(page, ANA)
     await page.evaluate(() => {
       ;(window as unknown as { __kurioNoReload: boolean }).__kurioNoReload = true
@@ -230,7 +224,7 @@ test.describe('favorites @favorites', () => {
     await expect(cardFavorite(page, 'Electric Echo #366')).toHaveAttribute('aria-pressed', 'true')
     await expect.poll(() => userFavorites(page, ANA.id)).toContain('electric-echo-366')
 
-    await logout(page)
+    await logout(page, testInfo)
     // Visitors see no favorite marked.
     await expectFavorite(page, 'Electric Echo #366', false)
 
@@ -261,7 +255,7 @@ test.describe('favorites @favorites', () => {
     expect(statuses).toEqual([401, 401])
   })
 
-  test('the list has loading, empty and error states', async ({ page }) => {
+  test('the list has loading, empty and error states', async ({ page }, testInfo) => {
     // The profile page has no NFT cards, so the list is not cached when it opens.
     // On desktop the login modal sits over the home, whose cards may load the list
     // right after signing in; a reload on the profile starts from an empty cache.
@@ -283,7 +277,7 @@ test.describe('favorites @favorites', () => {
     await expect.poll(() => userFavorites(page, BRUNO.id)).toEqual([])
 
     // A new session starts with an empty cache; the API is down when the list opens.
-    await logout(page)
+    await logout(page, testInfo)
     await login(page, BRUNO, fromProfile)
     await expect(page).toHaveURL(/\/account\/profile$/)
     await page.reload()

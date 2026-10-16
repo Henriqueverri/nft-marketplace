@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { ANA, BRUNO, fillLogin, login, logout, openLogin } from './support/auth'
+import { ANA, BRUNO, fillLogin, login, logout, openAccountProfile, openLogin } from './support/auth'
 import { callMockControl, SESSION_STORAGE_KEY, type MockConnections } from './support/mock-control'
 
 /** Marks the document; the mark disappears if the page is ever reloaded. */
@@ -20,17 +20,12 @@ async function storageSnapshot(page: Page) {
   }))
 }
 
-async function openProfileFromHeader(page: Page) {
-  await page.getByRole('link', { name: 'Meu perfil' }).click()
-  await expect(page).toHaveURL(/\/account\/profile$/)
-}
-
 test.describe('session isolation @isolation', () => {
-  test('user B signs in after A without a refresh and sees nothing of A', async ({ page }) => {
+  test('user B signs in after A without a refresh and sees nothing of A', async ({ page }, testInfo) => {
     await login(page, ANA)
     await markDocument(page)
 
-    await openProfileFromHeader(page)
+    await openAccountProfile(page)
     await expect(page.getByTestId('profile-email')).toHaveText(ANA.email)
     const nameInput = page.getByLabel('Nome de exibição')
     await nameInput.fill('Ana Privada')
@@ -39,12 +34,12 @@ test.describe('session isolation @isolation', () => {
     // An unsaved draft of A must not survive A's logout.
     await nameInput.fill('rascunho secreto da Ana')
 
-    await logout(page)
+    await logout(page, testInfo)
     await openLogin(page)
     await fillLogin(page, BRUNO.email, BRUNO.password)
     await expect(page.getByTestId('session-user')).toHaveText(`@${BRUNO.username}`)
 
-    await openProfileFromHeader(page)
+    await openAccountProfile(page)
     await expect(page.getByTestId('profile-email')).toHaveText(BRUNO.email)
     await expect(page.getByTestId('profile-display-name')).toHaveText(BRUNO.displayName)
     await expect(page.getByLabel('Nome de exibição')).toHaveValue(BRUNO.displayName)
@@ -58,15 +53,15 @@ test.describe('session isolation @isolation', () => {
     await expectSameDocument(page)
   })
 
-  test('logout leaves no private data of A in the browser storage', async ({ page }) => {
+  test('logout leaves no private data of A in the browser storage', async ({ page }, testInfo) => {
     await login(page, ANA)
-    await openProfileFromHeader(page)
+    await openAccountProfile(page)
     await page.getByLabel('Nome de exibição').fill('rascunho da Ana')
     const before = await storageSnapshot(page)
     expect(Object.keys(before.session)).toContain(`kurio:draft:${ANA.id}:profile.displayName`)
     expect(before.local[SESSION_STORAGE_KEY]).toContain(ANA.id)
 
-    await logout(page)
+    await logout(page, testInfo)
     const after = await storageSnapshot(page)
     expect(after.local[SESSION_STORAGE_KEY]).toBeUndefined()
     expect(Object.keys(after.session).filter((key) => key.includes(ANA.id))).toEqual([])
@@ -105,7 +100,7 @@ test.describe('session isolation @isolation', () => {
 
     // Ana's profile request is now in flight for 2s...
     const anaProfile = page.waitForRequest((r) => r.url().endsWith('/api/me'))
-    await page.getByRole('link', { name: 'Meu perfil' }).click()
+    await openAccountProfile(page)
     await anaProfile
     // ...when the other tab switches the browser session to Bruno.
     await otherTab.evaluate(
@@ -118,16 +113,16 @@ test.describe('session isolation @isolation', () => {
     expect(await page.evaluate(() => (window as unknown as { __kurioSawEmail: boolean }).__kurioSawEmail)).toBe(false)
   })
 
-  test('logout closes the socket of the session and its listeners', async ({ page }) => {
+  test('logout closes the socket of the session and its listeners', async ({ page }, testInfo) => {
     await login(page, ANA)
-    await openProfileFromHeader(page)
+    await openAccountProfile(page)
     await expect(page.getByTestId('realtime-identity')).toHaveText(ANA.id)
     // The profile listener plus the app-wide `nft.updated` listener.
     await expect(page.getByTestId('realtime-subscriptions')).toHaveText('2')
     let state = await callMockControl<MockConnections>(page, '/__mock/socket/connections')
     expect(state.connections).toEqual([expect.objectContaining({ userId: ANA.id })])
 
-    await logout(page)
+    await logout(page, testInfo)
     await expect(page.getByTestId('realtime-identity')).toHaveText('anônima')
     // Only the app-wide `nft.updated` listener, which carries no private data, remains.
     await expect(page.getByTestId('realtime-subscriptions')).toHaveText('1')
@@ -175,7 +170,7 @@ test.describe('session isolation @isolation', () => {
 
   test('private events reach only their owner, even if the server broadcasts them', async ({ page }) => {
     await login(page, BRUNO)
-    await openProfileFromHeader(page)
+    await openAccountProfile(page)
     // Wait for GET /api/me to settle: subscriptions===2 is true while the profile is
     // still pending, and a late REST response would overwrite a realtime update.
     await expect(page.getByTestId('profile-display-name')).toHaveText(BRUNO.displayName)

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { ANA, authHeading, fillLogin, login, logout, signupButtonName } from './support/auth'
+import { ANA, authHeading, fillLogin, login, logout, openAccountProfile, signupButtonName } from './support/auth'
 import { callMockControl, SESSION_STORAGE_KEY, type MockStateSummary } from './support/mock-control'
 
 async function fillSignup(
@@ -121,12 +121,12 @@ test.describe('auth @auth', () => {
     await expect(page.getByTestId('profile-email')).toHaveText(ANA.email)
   })
 
-  test('logout revokes the session, clears private data and leaves the private area', async ({ page }) => {
+  test('logout revokes the session, clears private data and leaves the private area', async ({ page }, testInfo) => {
     await login(page, ANA)
     await page.getByRole('link', { name: 'Meu perfil' }).click()
     await expect(page.getByTestId('profile-email')).toHaveText(ANA.email)
 
-    await logout(page)
+    await logout(page, testInfo)
     await expect(page).toHaveURL((url) => url.pathname === '/')
     await expect(page.getByTestId('announcer')).toContainText('Você saiu da sua conta.')
     await expect(page.getByTestId('profile-email')).toHaveCount(0)
@@ -142,12 +142,18 @@ test.describe('auth @auth', () => {
 
   test('an expired session gets a real 401, goes to login and resumes the draft afterwards', async ({ page }) => {
     await login(page, ANA)
-    await page.getByRole('link', { name: 'Meu perfil' }).click()
+    await openAccountProfile(page)
     await expect(page.getByTestId('profile-email')).toHaveText(ANA.email)
     await page.getByLabel('Nome de exibição').fill('Ana rascunho')
 
-    const unauthorized = page.waitForResponse((r) => r.url().endsWith('/api/auth/session') && r.status() === 401)
-    await page.getByRole('button', { name: 'Expirar sessão' }).click()
+    // DemoPanel "Expirar sessão" is off-canvas. Expire via the control API, then any private
+    // request through the app HTTP client gets a real 401 and ends the session as expired
+    // (same interceptor path as invalidating /api/auth/session from the panel).
+    const unauthorized = page.waitForResponse(
+      (r) => r.url().endsWith('/api/me') && r.request().method() === 'PATCH' && r.status() === 401,
+    )
+    await callMockControl(page, '/__mock/session/expire', 'POST', {})
+    await page.getByRole('button', { name: 'Salvar nome' }).click()
     await unauthorized
 
     await expect(page).toHaveURL(

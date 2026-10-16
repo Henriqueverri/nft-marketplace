@@ -61,8 +61,9 @@ export function SignupForm({ variant, redirect }: SignupFormProps) {
     const { username, email, password } = parsed.data
     signup.mutate({ username, email, password }, {
       onSuccess: async (session) => {
-        await navigate({ href: redirect, replace: true })
+        // Same order as login: announce while this callback is still current, then navigate.
         announce(`Conta criada. Boas-vindas, ${session.user.displayName}.`)
+        await navigate({ href: redirect, replace: true })
       },
       onError: (error) => {
         if (error instanceof ApiError) {

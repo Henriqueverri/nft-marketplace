@@ -1,4 +1,5 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, type Page, type TestInfo } from '@playwright/test'
+import { isMobile } from './auth'
 import type { SeedEdition } from './cart'
 import { callMockControl } from './mock-control'
 
@@ -25,9 +26,11 @@ export interface ServerOrder {
 }
 
 /** The app renders once the mock worker answers, so API calls from the page reach it. */
-export async function openApp(page: Page) {
+export async function openApp(page: Page, testInfo: TestInfo) {
   await page.goto('/')
-  await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible()
+  // Desktop: Figma header. Mobile frames have no top bar — only the tab bar.
+  const nav = isMobile(testInfo) ? 'Atalhos' : 'Principal'
+  await expect(page.getByRole('navigation', { name: nav })).toBeVisible()
 }
 
 export function callApi<T = OrderBody>(
