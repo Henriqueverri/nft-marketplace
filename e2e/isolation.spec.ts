@@ -176,6 +176,9 @@ test.describe('session isolation @isolation', () => {
   test('private events reach only their owner, even if the server broadcasts them', async ({ page }) => {
     await login(page, BRUNO)
     await openProfileFromHeader(page)
+    // Wait for GET /api/me to settle: subscriptions===2 is true while the profile is
+    // still pending, and a late REST response would overwrite a realtime update.
+    await expect(page.getByTestId('profile-display-name')).toHaveText(BRUNO.displayName)
     await expect(page.getByTestId('realtime-identity')).toHaveText(BRUNO.id)
     // The catalog always subscribes once; the second subscription confirms that
     // ProfilePage's effect is ready before an event is emitted.

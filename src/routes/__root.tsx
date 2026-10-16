@@ -1,11 +1,11 @@
 import { createRootRouteWithContext, Outlet, useLocation } from '@tanstack/react-router'
+import { lazy, Suspense } from 'react'
 import { MobileTabBar } from '@/app/layout/MobileTabBar'
 import { MobileTopBar, SiteHeader } from '@/app/layout/SiteHeader'
 import { SiteFooter } from '@/app/layout/SiteFooter'
 import type { RouterContext } from '@/app/router'
 import { useCartNoticesAnnouncer } from '@/features/cart/components/CartNoticesAnnouncer'
 import { useNftRealtimeSync } from '@/features/catalog/realtime-sync'
-import { DemoPanel } from '@/features/demo/DemoPanel'
 import { OrderNotices } from '@/features/orders/components/OrderNotices'
 import { cn } from '@/lib/utils'
 import { DESKTOP_MEDIA_QUERY, useMediaQuery } from '@/shared/hooks/use-media-query'
@@ -18,6 +18,11 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 })
 
 const AUTH_PATHS = ['/login', '/signup']
+
+// Demo tooling only: keep it off the initial Home/detail JS graph and __mock/state fetch.
+const DemoPanel = lazy(() =>
+  import('@/features/demo/DemoPanel').then((module) => ({ default: module.DemoPanel })),
+)
 
 function RootLayout() {
   const isDesktop = useMediaQuery(DESKTOP_MEDIA_QUERY)
@@ -50,7 +55,9 @@ function RootLayout() {
         <Outlet />
       </main>
       {isDesktop || !authPage ? <SiteFooter /> : null}
-      <DemoPanel />
+      <Suspense fallback={null}>
+        <DemoPanel />
+      </Suspense>
       {showTabBar ? <MobileTabBar /> : null}
     </div>
   )

@@ -39,7 +39,7 @@ Arquivos `*.local` (por exemplo, `.env.local`) são ignorados pelo git e nunca e
 - `npm run test:e2e:smoke`: apenas os testes marcados com `@smoke`.
 - `npm run test:e2e:deploy`: smoke contra o deploy; exige `PLAYWRIGHT_BASE_URL`.
 - `npm run test:e2e:report`: abre o último relatório HTML.
-- `npm run lighthouse`: sondagem Lighthouse da home e do detalhe (perfis mobile e desktop) contra um build em execução. Rode antes `npm run build && npm run preview`; aceita outra URL base (`npm run lighthouse -- https://<sua-url>`). Os relatórios ficam em `lighthouse/`.
+- `npm run lighthouse`: coleta F8 em lotes de três rodadas para uma página/perfil contra um preview já em execução. Exemplo: `npm run lighthouse -- --collection f8-<id> --page home --preset mobile http://127.0.0.1:4173`. Repita para `home/detail` × `mobile/desktop`, então gere `npm run lighthouse -- --collection f8-<id> --summary`. Cada coleção fica em `lighthouse/f8-<id>/`; o resumo só é escrito quando os 12 relatórios forem válidos.
 
 ### Testar o deploy
 

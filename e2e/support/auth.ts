@@ -34,11 +34,18 @@ export function signupButtonName(testInfo: TestInfo): string {
 export async function fillLogin(page: Page, email: string, password: string) {
   await page.getByLabel('E-mail').fill(email)
   await page.getByLabel('Senha', { exact: true }).fill(password)
-  const response = page.waitForResponse(
-    (candidate) => candidate.url().endsWith('/api/auth/login') && candidate.request().method() === 'POST',
-  )
+  // MSW "offline" fails the fetch with no HTTP response (requestfailed); 4xx/5xx still
+  // produce a response. Wait for either so scenario tests can settle after Sem rede.
+  const isLoginPost = (url: string, method: string) =>
+    url.endsWith('/api/auth/login') && method === 'POST'
+  const settled = Promise.race([
+    page.waitForResponse((candidate) => isLoginPost(candidate.url(), candidate.request().method())),
+    page.waitForEvent('requestfailed', {
+      predicate: (request) => isLoginPost(request.url(), request.method()),
+    }),
+  ])
   await page.getByRole('button', { name: 'Entrar', exact: true }).click()
-  await response
+  await settled
 }
 
 /** Signs in from /login and waits for the session to be shown in the demo panel. */
