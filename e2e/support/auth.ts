@@ -55,7 +55,28 @@ export async function login(page: Page, account: { email: string; password: stri
   if (account.username) await expect(page.getByTestId('session-user')).toHaveText(`@${account.username}`)
 }
 
+/**
+ * Opens login without a full reload when possible (cart/favorites races need an in-app switch).
+ * Desktop: header "Entrar". Mobile has no top bar (Figma) — the profile tab redirects to /login.
+ */
+export async function openLogin(page: Page) {
+  const headerLogin = page.getByRole('navigation', { name: 'Principal' }).getByRole('link', { name: 'Entrar' })
+  if (await headerLogin.isVisible()) {
+    await headerLogin.click()
+  } else {
+    // Mobile has no header "Entrar": the profile tab hits the auth guard when signed out.
+    const profileTab = page.getByRole('navigation', { name: 'Atalhos' }).getByRole('link', { name: 'Meu perfil' })
+    if (await profileTab.isVisible()) {
+      await profileTab.click()
+    } else {
+      await page.goto('/login')
+    }
+  }
+  await expect(page.getByRole('heading', { level: 1, name: 'Entrar' })).toBeVisible()
+}
+
 export async function logout(page: Page) {
-  await page.getByRole('button', { name: 'Sair' }).click()
+  // Desktop header and account sidebar both expose "Sair".
+  await page.getByRole('button', { name: 'Sair' }).first().click()
   await expect(page.getByTestId('session-user')).toHaveText('visitante')
 }

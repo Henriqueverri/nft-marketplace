@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { ANA, BRUNO, fillLogin, login, logout } from './support/auth'
+import { ANA, BRUNO, fillLogin, login, logout, openLogin } from './support/auth'
 import {
   announcer,
   apiNftPrice,
@@ -27,7 +27,7 @@ const CART_READS = /^(GET \/api\/cart|POST \/api\/quotes)/
 /** Client-side user switch (no reload), ending on the Emerald detail page. */
 async function switchUserTo(page: Page, user: typeof ANA) {
   await logout(page)
-  await page.getByRole('navigation', { name: 'Principal' }).getByRole('link', { name: 'Entrar' }).click()
+  await openLogin(page)
   await fillLogin(page, user.email, user.password)
   await expect(page.getByTestId('realtime-identity')).toHaveText(user.id)
   await searchCatalog(page, 'emerald')

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { authHeading } from './support/auth'
+import { authHeading, isMobile } from './support/auth'
 import { callMockControl, type MockStatus } from './support/mock-control'
 
 /** The hero headline differs between the desktop and mobile layouts (Figma). */
@@ -14,11 +14,16 @@ const publicRoutes = [
 const privateRoutes = ['/checkout', '/orders/order-123', '/account/profile', '/account/wallets', '/account/orders', '/account/favorites']
 
 test.describe('smoke @smoke', () => {
-  test('opens the home route', async ({ page }) => {
+  test('opens the home route', async ({ page }, testInfo) => {
     await page.goto('/')
     await expect(page).toHaveTitle(/Kurio/)
     await expect(page.getByRole('heading', { level: 1, name: HOME_HEADING })).toBeVisible()
-    await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible()
+    // Desktop: Figma header. Mobile frames have no top bar — only the tab bar.
+    if (isMobile(testInfo)) {
+      await expect(page.getByRole('navigation', { name: 'Atalhos' })).toBeVisible()
+    } else {
+      await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible()
+    }
   })
 
   for (const route of publicRoutes) {

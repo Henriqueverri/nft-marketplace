@@ -127,8 +127,29 @@ export function cartLink(page: Page, testInfo: TestInfo): Locator {
   return nav.getByRole('link', { name: /^Carrinho/ })
 }
 
+/** Total quantity in the active cart (guest or signed-in), via the mock control API. */
+async function serverCartQuantity(page: Page): Promise<number> {
+  const carts = await serverCarts(page)
+  const sessionRaw = await page.evaluate(() => window.localStorage.getItem('kurio:session'))
+  if (sessionRaw) {
+    const session = JSON.parse(sessionRaw) as { user?: { id?: string } }
+    const userId = session.user?.id
+    if (userId && carts.users[userId]) {
+      return carts.users[userId].items.reduce((sum, item) => sum + item.quantity, 0)
+    }
+  }
+  const cartId = await guestCartId(page)
+  if (!cartId || !carts.guests[cartId]) return 0
+  return carts.guests[cartId].items.reduce((sum, item) => sum + item.quantity, 0)
+}
+
 export async function expectBadge(page: Page, testInfo: TestInfo, count: number) {
   const link = cartLink(page, testInfo)
+  // Mobile hides the tab bar on screens with "Voltar" (cart, detail, account…).
+  if (isMobile(testInfo) && !(await link.isVisible())) {
+    expect(await serverCartQuantity(page)).toBe(count)
+    return
+  }
   if (count === 0) {
     await expect(link).toHaveAccessibleName('Carrinho')
     await expect(link.getByTestId('cart-badge')).toHaveCount(0)

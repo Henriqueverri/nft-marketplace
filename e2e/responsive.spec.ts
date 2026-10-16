@@ -37,6 +37,7 @@ test.describe('responsive layouts @responsive', () => {
     await summary(page).getByRole('button', { name: 'Conectar e finalizar' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Pagamento' })).toBeVisible()
 
+    const mobile = isMobile(testInfo)
     const pages = [
       { path: '/account/profile', heading: 'Perfil do colecionador' },
       { path: '/account/wallets', heading: 'Carteiras' },
@@ -44,7 +45,7 @@ test.describe('responsive layouts @responsive', () => {
       { path: '/cart', heading: 'Carrinho de NFTs' },
       { path: '/checkout', heading: 'Pagamento' },
     ]
-    for (const width of WIDTHS[isMobile(testInfo) ? 'mobile' : 'desktop']) {
+    for (const width of WIDTHS[mobile ? 'mobile' : 'desktop']) {
       await page.setViewportSize({ width, height: 900 })
       for (const target of pages) {
         await page.goto(target.path)

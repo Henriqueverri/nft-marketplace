@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import path from 'node:path'
-import { ANA, BRUNO, fillLogin, login, logout } from './support/auth'
+import { ANA, BRUNO, fillLogin, login, logout, openLogin } from './support/auth'
 import { addFromDetail, VELVET_OPEN } from './support/cart'
 
 test.describe('account @account', () => {
@@ -60,7 +60,7 @@ test.describe('account @account', () => {
     await expect(page.getByTestId('announcer')).toContainText('Senha alterada com sucesso.')
     await expect(current).toHaveValue('')
     await logout(page)
-    await page.getByRole('link', { name: 'Entrar' }).click()
+    await openLogin(page)
     await fillLogin(page, ANA.email, 'nova-kurio-2027')
     await expect(page.getByTestId('session-user')).toHaveText(`@${ANA.username}`)
   })
@@ -129,7 +129,7 @@ test.describe('account @account', () => {
     await page.getByRole('button', { name: 'Salvar carteira principal' }).click()
 
     await logout(page)
-    await page.getByRole('link', { name: 'Entrar' }).click()
+    await openLogin(page)
     await fillLogin(page, BRUNO.email, BRUNO.password)
     await page.goto('/account/profile')
     await expect(page.getByTestId('profile-display-name')).toHaveText(BRUNO.displayName)

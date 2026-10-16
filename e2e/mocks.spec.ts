@@ -1,5 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
-import { ANA, fillLogin, login, logout, signupButtonName } from './support/auth'
+import { ANA, fillLogin, login, logout, openLogin, signupButtonName } from './support/auth'
 import { callMockControl, DB_STORAGE_KEY, SESSION_STORAGE_KEY, type MockStateSummary } from './support/mock-control'
 
 async function signup(page: Page, testInfo: TestInfo, account: { username: string; email: string; password: string }) {
@@ -35,11 +35,6 @@ async function closeAuthDialogIfOpen(page: Page) {
     await dialog.getByRole('button', { name: 'Fechar' }).click()
     await expect(dialog).toHaveCount(0)
   }
-}
-
-async function openLoginFromHeader(page: Page) {
-  await page.getByRole('navigation', { name: 'Principal' }).getByRole('link', { name: 'Entrar' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Entrar' })).toBeVisible()
 }
 
 const DIEGO = { username: 'diego.teste', email: 'diego@kurio.test', password: 'Segredo-Unico-2026x' }
@@ -120,14 +115,14 @@ test.describe('mock database and scenarios @mocks', () => {
   test('API failures from the scenario panel give visible feedback and recover', async ({ page }) => {
     await page.goto('/')
     await applyScenario(page, { failure: 'Erro interno (500)' })
-    await openLoginFromHeader(page)
+    await openLogin(page)
     await fillLogin(page, ANA.email, ANA.password)
     await expect(page.getByRole('alert')).toHaveText('Erro interno simulado pelo cenário de falha.')
 
     await closeAuthDialogIfOpen(page)
     await page.goto('/')
     await applyScenario(page, { failure: 'Sem rede' })
-    await openLoginFromHeader(page)
+    await openLogin(page)
     await fillLogin(page, ANA.email, ANA.password)
     await expect(page.getByRole('alert')).toHaveText('Sem conexão com o servidor. Verifique sua rede e tente novamente.')
     await expect(page.getByTestId('session-user')).toHaveText('visitante')
@@ -135,7 +130,7 @@ test.describe('mock database and scenarios @mocks', () => {
     await closeAuthDialogIfOpen(page)
     await page.goto('/')
     await applyScenario(page, { failure: 'Nenhuma falha' })
-    await openLoginFromHeader(page)
+    await openLogin(page)
     await fillLogin(page, ANA.email, ANA.password)
     await expect(page.getByTestId('session-user')).toHaveText(`@${ANA.username}`)
 

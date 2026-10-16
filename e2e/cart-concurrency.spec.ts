@@ -1,5 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
-import { ANA, BRUNO, fillLogin, login, logout } from './support/auth'
+import { ANA, BRUNO, fillLogin, login, logout, openLogin } from './support/auth'
 import {
   addFromDetail,
   cartItem,
@@ -25,7 +25,7 @@ import { announcer, queueNetwork, requestCount, updateNftPrice, waitForMockIdle 
  */
 
 async function signInInApp(page: Page, account: typeof ANA) {
-  await page.getByRole('navigation', { name: 'Principal' }).getByRole('link', { name: 'Entrar' }).click()
+  await openLogin(page)
   await fillLogin(page, account.email, account.password)
   await expect(page.getByTestId('session-user')).toHaveText(`@${account.username}`)
 }

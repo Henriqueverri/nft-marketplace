@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { ANA, BRUNO, fillLogin, login, logout } from './support/auth'
+import { ANA, BRUNO, fillLogin, login, logout, openLogin } from './support/auth'
 import { callMockControl, SESSION_STORAGE_KEY, type MockConnections } from './support/mock-control'
 
 /** Marks the document; the mark disappears if the page is ever reloaded. */
@@ -40,7 +40,7 @@ test.describe('session isolation @isolation', () => {
     await nameInput.fill('rascunho secreto da Ana')
 
     await logout(page)
-    await page.getByRole('link', { name: 'Entrar' }).click()
+    await openLogin(page)
     await fillLogin(page, BRUNO.email, BRUNO.password)
     await expect(page.getByTestId('session-user')).toHaveText(`@${BRUNO.username}`)
 

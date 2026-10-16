@@ -1,5 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
-import { ANA, BRUNO, fillLogin, isMobile, login, logout } from './support/auth'
+import { ANA, BRUNO, fillLogin, isMobile, login, logout, openLogin } from './support/auth'
 import {
   announcer,
   catalogCard,
@@ -200,7 +200,7 @@ test.describe('favorites @favorites', () => {
     await expect(button).toHaveAttribute('aria-pressed', 'true')
 
     await logout(page)
-    await page.getByRole('navigation', { name: 'Principal' }).getByRole('link', { name: 'Entrar' }).click()
+    await openLogin(page)
     await fillLogin(page, BRUNO.email, BRUNO.password)
     await expect(page.getByTestId('session-user')).toHaveText(`@${BRUNO.username}`)
     // Ana's request is still on its way: the switch really happened in the middle of it.
@@ -234,7 +234,7 @@ test.describe('favorites @favorites', () => {
     // Visitors see no favorite marked.
     await expectFavorite(page, 'Electric Echo #366', false)
 
-    await page.getByRole('navigation', { name: 'Principal' }).getByRole('link', { name: 'Entrar' }).click()
+    await openLogin(page)
     await fillLogin(page, BRUNO.email, BRUNO.password)
     await expect(page.getByTestId('session-user')).toHaveText(`@${BRUNO.username}`)
     await expectFavorite(page, 'Electric Echo #366', false)
