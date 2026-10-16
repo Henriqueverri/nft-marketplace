@@ -44,16 +44,17 @@ test.describe('socket.io over msw @smoke @realtime', () => {
     await page.goto('/')
     await expect(page.getByTestId('realtime-state')).toHaveText('conectado')
 
-    // The mock answers the realtime client chunk with a network error, like a chunk
-    // removed by a new deploy; the app's own dynamic import is what fails.
+    // Abort the on-demand chunk explicitly: Vercel's immutable /assets cache can satisfy
+    // socket-client-*.js without MSW ever failing the import, so waiting for a request is
+    // not enough. Playwright routing forces a load failure local and on the public deploy.
+    const socketClientChunk = /\/socket-client-[\w-]+\.js(?:\?.*)?$/
+    await page.route(socketClientChunk, (route) => route.abort())
     await callMockControl(page, '/__mock/scenario', 'PUT', {
       latencyMs: 100,
       failure: 'none',
       realtimeClient: 'unavailable',
     })
-    const chunkRequest = page.waitForRequest((request) => /\/socket-client-[\w-]+\.js$/.test(request.url()))
     await page.reload()
-    await chunkRequest
 
     await expect(page.getByTestId('realtime-state')).toHaveText('indisponível')
     const notice = page.getByRole('alert').filter({ hasText: 'Atualizações em tempo real indisponíveis' })
@@ -68,6 +69,7 @@ test.describe('socket.io over msw @smoke @realtime', () => {
     await notice.getByRole('button', { name: 'Tentar conectar novamente' }).click()
     await expect(page.getByTestId('realtime-state')).toHaveText('indisponível')
 
+    await page.unroute(socketClientChunk)
     await callMockControl(page, '/__mock/scenario', 'PUT', { latencyMs: 100, failure: 'none' })
     await page.getByRole('button', { name: 'Tentar conectar novamente' }).click()
     await expect(page.getByTestId('realtime-state')).toHaveText('conectado')
