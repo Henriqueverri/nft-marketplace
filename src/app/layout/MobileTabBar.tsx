@@ -14,7 +14,11 @@ const tabs: { to: '/' | '/account/favorites' | '/cart' | '/account/profile'; lab
 
 const focusRing = 'outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-/** Mobile tab bar (Figma "Tab Bar"): icons with accessible names, scan button in the middle. */
+/** Tab bar silhouette from Figma (414×95 path with center cradle for the scan button). */
+const TAB_BAR_PATH =
+  'M282.85 0C269.09 0 256.87 8.2 251.02 20.65C243.26 37.17 226.46 48.62 207 48.62C187.54 48.62 170.74 37.18 162.98 20.65C157.13 8.2 144.9 0 131.15 0H28.93C12.95 0 0 12.95 0 28.93V95H414V28.93C414 12.95 401.05 0 385.07 0H282.85Z'
+
+/** Mobile tab bar (Figma "Tab Bar"): curved cradle around the scan button, icons on the sides. */
 export function MobileTabBar() {
   const pathname = useLocation({ select: (location) => location.pathname })
   const announce = useAnnounce()
@@ -47,25 +51,38 @@ export function MobileTabBar() {
   return (
     <nav
       aria-label="Atalhos"
-      className="fixed inset-x-0 bottom-0 z-30 rounded-t-[28px] bg-surface-card pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_rgb(10_6_4/0.45)] md:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 pb-[env(safe-area-inset-bottom)] md:hidden"
     >
-      <ul className="relative flex h-[72px] items-center px-4">
-        {tabs.slice(0, 2).map(renderTab)}
-        <li className="flex flex-1 justify-center">
-          <button
-            type="button"
-            aria-label="Escanear NFT"
-            onClick={() => announce('A leitura de NFTs pela câmera não faz parte desta demonstração.')}
-            className={cn(
-              '-mt-10 flex size-[65px] items-center justify-center rounded-full bg-linear-to-br from-brand/45 to-brand text-cream shadow-glow ring-4 ring-ink',
-              'outline-none focus-visible:ring-ring',
-            )}
-          >
-            <Icon name="tab-scan" className="size-6" />
-          </button>
-        </li>
-        {tabs.slice(2).map(renderTab)}
-      </ul>
+      <div className="relative h-[95px] w-full">
+        <svg
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 size-full drop-shadow-[0_-10px_30px_rgb(10_6_4/0.45)]"
+          viewBox="0 0 414 95"
+          fill="none"
+          preserveAspectRatio="none"
+        >
+          <path d={TAB_BAR_PATH} className="fill-surface-card" />
+        </svg>
+
+        <button
+          type="button"
+          aria-label="Escanear NFT"
+          onClick={() => announce('A leitura de NFTs pela câmera não faz parte desta demonstração.')}
+          className={cn(
+            'absolute top-0 left-1/2 z-10 flex size-[65px] -translate-x-1/2 -translate-y-8 items-center justify-center rounded-full',
+            'bg-linear-to-b from-brand/40 to-brand text-cream',
+            'outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          )}
+        >
+          <Icon name="tab-scan" className="size-6" />
+        </button>
+
+        <ul className="relative flex h-full items-center px-4">
+          {tabs.slice(0, 2).map(renderTab)}
+          <li className="w-[65px] shrink-0" aria-hidden="true" />
+          {tabs.slice(2).map(renderTab)}
+        </ul>
+      </div>
     </nav>
   )
 }

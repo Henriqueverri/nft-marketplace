@@ -52,22 +52,31 @@ export function SiteHeader() {
     requestAnimationFrame(() => focusCatalogSearch())
   }
 
+  // Active underline is brand (#D28A4C) 3px; hairline below the row is the same color at 0.3px (Figma).
   const itemClass = (active: boolean) =>
     cn(
-      'relative block rounded-sm py-1 text-body-16 after:absolute after:inset-x-0 after:-bottom-[13px] after:h-[3px] after:rounded-full',
+      'relative block pb-6 text-body-16 after:absolute after:inset-x-0 after:bottom-0 after:h-[3px] after:bg-brand after:opacity-0',
       focusRing,
-      active ? 'font-bold text-brand-accent after:bg-brand' : 'text-cream hover:text-brand-accent',
+      active
+        ? 'font-bold text-brand-accent after:opacity-100'
+        : 'font-normal text-cream hover:text-brand-accent',
     )
 
   const unavailable = (label: string) => () => announce(`${label} não faz parte desta demonstração.`)
 
   return (
     <header className="hidden px-6 pt-6 md:block xl:px-0">
-      <nav aria-label="Principal" className="mx-auto flex h-[45px] w-full max-w-[1200px] items-center justify-between gap-6">
-        <Link to="/" className={cn('rounded-sm text-body-14 font-bold tracking-[1.4px] text-cream', focusRing)}>
+      <nav
+        aria-label="Principal"
+        className="mx-auto flex w-full max-w-[1200px] items-start justify-between gap-6"
+      >
+        <Link
+          to="/"
+          className={cn('rounded-sm pt-2 text-body-14 font-bold tracking-[1.4px] text-cream', focusRing)}
+        >
           KURIO
         </Link>
-        <ul className="flex items-center gap-6 lg:gap-10">
+        <ul className="flex items-start gap-10">
           <li>
             <Link to="/" aria-current={pathname === '/' ? 'page' : undefined} className={itemClass(pathname === '/')}>
               Início
@@ -89,19 +98,19 @@ export function SiteHeader() {
             </button>
           </li>
         </ul>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-7 self-center">
           <button
             type="button"
             aria-label="Buscar NFTs"
             onClick={() => void openSearch()}
-            className={cn('flex size-8 items-center justify-center rounded-full text-cream hover:text-brand-accent', focusRing)}
+            className={cn('flex size-5 items-center justify-center text-cream hover:text-brand-accent', focusRing)}
           >
-            <Icon name="search" />
+            <Icon name="search" className="size-5" />
           </button>
           <Link
             to="/cart"
             aria-label={cartLinkLabel(cartCount)}
-            className={cn('flex size-8 items-center justify-center rounded-full text-cream hover:text-brand-accent', focusRing)}
+            className={cn('flex size-6 items-center justify-center text-cream hover:text-brand-accent', focusRing)}
           >
             <span className="relative">
               <Icon name="cart" className="size-6" />
@@ -130,7 +139,7 @@ export function SiteHeader() {
               to="/login"
               search={loginSearch}
               className={cn(
-                'flex h-[35px] items-center gap-1.5 rounded-[6px] bg-brand px-3 text-body-16 font-medium text-ink hover:bg-brand-accent',
+                'flex h-[35px] w-[100px] items-center justify-center gap-1 rounded-[6px] bg-brand text-body-16 font-medium text-ink hover:bg-brand-accent',
                 focusRing,
               )}
             >
@@ -140,52 +149,7 @@ export function SiteHeader() {
           )}
         </div>
       </nav>
-      <div aria-hidden="true" className="mx-auto mt-[10px] h-px w-full max-w-[1200px] bg-brand/30" />
-    </header>
-  )
-}
-
-/**
- * Mobile identity bar. The Figma mobile frames have no header; this slim bar keeps
- * sign-in and sign-out one tap away on every screen.
- */
-export function MobileTopBar() {
-  const session = useSession()
-  const user = session.data?.user
-  const logout = useLogoutAndLeave()
-  const loginSearch = useLoginSearch()
-
-  return (
-    <header className="px-4 pt-4 md:hidden">
-      <nav aria-label="Principal" className="flex h-9 items-center justify-between gap-3">
-        <Link to="/" className={cn('rounded-sm text-body-14 font-bold tracking-[1.4px] text-cream', focusRing)}>
-          KURIO
-        </Link>
-        {user ? (
-          <div className="flex min-w-0 items-center gap-3">
-            <span data-testid="header-user" className="truncate text-caption-13 text-text-secondary">
-              {user.displayName}
-            </span>
-            <button
-              type="button"
-              onClick={logout.run}
-              disabled={logout.pending}
-              className={cn('h-8 shrink-0 rounded-[6px] border border-brand px-3 text-caption-13 font-medium text-cream disabled:opacity-60', focusRing)}
-            >
-              {logout.pending ? 'Saindo…' : 'Sair'}
-            </button>
-          </div>
-        ) : (
-          <Link
-            to="/login"
-            search={loginSearch}
-            className={cn('flex h-8 items-center gap-1.5 rounded-[6px] bg-brand px-3 text-caption-13 font-bold text-ink', focusRing)}
-          >
-            <Icon name="login" className="size-4" />
-            Entrar
-          </Link>
-        )}
-      </nav>
+      <div aria-hidden="true" className="mx-auto h-[0.3px] w-full max-w-[1200px] bg-brand-accent" />
     </header>
   )
 }

@@ -1,7 +1,7 @@
 import { createRootRouteWithContext, Outlet, useLocation } from '@tanstack/react-router'
 import { lazy, Suspense } from 'react'
 import { MobileTabBar } from '@/app/layout/MobileTabBar'
-import { MobileTopBar, SiteHeader } from '@/app/layout/SiteHeader'
+import { SiteHeader } from '@/app/layout/SiteHeader'
 import { SiteFooter } from '@/app/layout/SiteFooter'
 import type { RouterContext } from '@/app/router'
 import { useCartNoticesAnnouncer } from '@/features/cart/components/CartNoticesAnnouncer'
@@ -19,7 +19,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 
 const AUTH_PATHS = ['/login', '/signup']
 
-// Demo tooling only: keep it off the initial Home/detail JS graph and __mock/state fetch.
+// Off-canvas only: e2e and local scenario controls. Not part of the Figma UI.
 const DemoPanel = lazy(() =>
   import('@/features/demo/DemoPanel').then((module) => ({ default: module.DemoPanel })),
 )
@@ -30,13 +30,20 @@ function RootLayout() {
   useNftRealtimeSync()
   useCartNoticesAnnouncer()
 
-  // On mobile the auth screens are standalone pages with their own logo (Figma), and
-  // the NFT detail replaces the tab bar with its buy bar.
+  // Mobile rule: the floating tab bar only stays on browsing surfaces. Any screen with a
+  // "Voltar" control (detail, cart, checkout, orders, account) hides it.
   const authPage = AUTH_PATHS.includes(pathname)
   const detailPage = pathname.startsWith('/nfts/')
-  const showTabBar = !isDesktop && !authPage && !detailPage
-  // Room for the fixed bottom bars, so the footer and demo panel are never covered.
-  const bottomSpace = isDesktop ? '' : showTabBar ? 'pb-[88px]' : detailPage ? 'pb-[180px]' : ''
+  const backPage =
+    detailPage ||
+    pathname === '/cart' ||
+    pathname.startsWith('/checkout') ||
+    pathname.startsWith('/orders') ||
+    pathname.startsWith('/account')
+  const showTabBar = !isDesktop && !authPage && !backPage
+  // Internal screens (Voltar) and auth have no site footer — only browsing surfaces do.
+  const showFooter = !authPage && !backPage
+  const bottomSpace = isDesktop ? '' : showTabBar ? 'pb-[110px]' : detailPage ? 'pb-[180px]' : ''
 
   return (
     <div className={cn('flex min-h-dvh flex-col', bottomSpace)}>
@@ -46,7 +53,7 @@ function RootLayout() {
       >
         Pular para o conteúdo
       </a>
-      {isDesktop ? <SiteHeader /> : authPage ? null : <MobileTopBar />}
+      <SiteHeader />
       <RealtimeUnavailableNotice />
       <OrderNotices />
       {/* At least a viewport tall: while a route or its data loads, the footer stays
@@ -54,11 +61,15 @@ function RootLayout() {
       <main id="conteudo" tabIndex={-1} className="min-h-dvh flex-1 outline-none">
         <Outlet />
       </main>
-      {isDesktop || !authPage ? <SiteFooter /> : null}
-      <Suspense fallback={null}>
-        <DemoPanel />
-      </Suspense>
+      {showFooter ? <SiteFooter /> : null}
       {showTabBar ? <MobileTabBar /> : null}
+      <div className="pointer-events-none fixed top-0 left-[-100vw] w-[min(100vw,1200px)] overflow-hidden">
+        <div className="pointer-events-auto">
+          <Suspense fallback={null}>
+            <DemoPanel />
+          </Suspense>
+        </div>
+      </div>
     </div>
   )
 }

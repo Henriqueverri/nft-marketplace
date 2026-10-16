@@ -319,19 +319,13 @@ function ShareLinks({ nft }: { nft: NftDetail }) {
 
 function NftTabs({ nft, tab, onTabChange }: { nft: NftDetail; tab: string; onTabChange: (tab: string) => void }) {
   const reviews = useReviews(nft.id, tab === 'reviews')
-  const triggerClass =
-    'h-auto flex-initial rounded-none border-0 border-b-[3px] border-transparent px-0 pb-2 text-left text-[17px] whitespace-normal font-bold text-cream data-active:border-brand data-active:text-brand-accent dark:data-active:border-brand dark:data-active:bg-transparent dark:data-active:text-brand-accent'
   const shortAddress = `${nft.contractAddress.slice(0, 6).toUpperCase().replace('0X', '0x')}...${nft.contractAddress.slice(-4).toUpperCase()}`
 
   return (
     <Tabs id="nft-tabs" value={tab} onValueChange={onTabChange} className="scroll-mt-6 gap-6">
-      <TabsList variant="line" className="w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto gap-x-8 gap-y-3 rounded-none border-b border-brand/30 p-0">
-        <TabsTrigger value="details" className={triggerClass}>
-          Detalhes do NFT
-        </TabsTrigger>
-        <TabsTrigger value="reviews" className={triggerClass}>
-          Avaliações de colecionadores ({nft.rating.count})
-        </TabsTrigger>
+      <TabsList variant="line">
+        <TabsTrigger value="details">Detalhes do NFT</TabsTrigger>
+        <TabsTrigger value="reviews">Avaliações de colecionadores ({nft.rating.count})</TabsTrigger>
       </TabsList>
       <TabsContent value="details" className="flex flex-col gap-4 text-body-14 leading-6 text-text-secondary">
         <p>{nft.description}</p>

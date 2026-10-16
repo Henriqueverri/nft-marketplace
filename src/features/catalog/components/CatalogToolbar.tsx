@@ -34,7 +34,7 @@ export function CatalogToolbar({
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
       <nav aria-label="Seções do catálogo" className="max-w-full shrink-0">
-        <ul className="flex flex-wrap gap-x-5 gap-y-2">
+        <ul className="flex flex-wrap gap-x-5 gap-y-2 text-body-15 leading-4 font-medium">
           {(Object.keys(viewLabels) as NftView[]).map((view) => {
             const active = search.view === view
             return (
@@ -45,8 +45,8 @@ export function CatalogToolbar({
                   resetScroll={false}
                   aria-current={active ? 'page' : undefined}
                   className={cn(
-                    'block rounded-sm border-b-2 pb-1 text-body-15 font-medium whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    active ? 'border-brand text-brand-accent' : 'border-transparent text-cream hover:text-brand-accent',
+                    'block rounded-sm whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    active ? 'text-brand-accent' : 'text-cream hover:text-brand-accent',
                   )}
                 >
                   {viewLabels[view]}

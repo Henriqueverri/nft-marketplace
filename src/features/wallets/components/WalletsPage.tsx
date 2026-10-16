@@ -18,7 +18,12 @@ import {
   firstInvalidField,
   type FieldErrors,
 } from '@/shared/forms/form-errors'
-import { FormAlert, TextField } from '@/shared/forms/fields'
+import {
+  AccountEnsField,
+  AccountSelectField,
+  AccountTextField,
+  FormAlert,
+} from '@/shared/forms/fields'
 import { useUpsertWallet, useWallets } from '../queries'
 
 type WalletField = 'displayName' | 'nickname' | 'networkId' | 'address' | 'provider' | 'ensName' | 'sameAsPrimary'
@@ -50,13 +55,8 @@ export function WalletsPage() {
 
   return (
     <AccountShell>
-      <div className="flex flex-col gap-8">
-        <div>
-          <h1 className="text-heading-28 font-bold text-cream">Carteiras</h1>
-          <p className="mt-2 text-body-14 text-text-secondary">
-            Essas carteiras ficam disponíveis para seleção no pagamento.
-          </p>
-        </div>
+      <div className="flex w-full max-w-[862px] flex-col gap-8">
+        <h1 className="sr-only">Carteiras</h1>
         {wallets.isPending ? (
           <p role="status" className="text-body-14 text-text-secondary">
             Carregando carteiras…
@@ -69,7 +69,7 @@ export function WalletsPage() {
             </Button>
           </div>
         ) : (
-          <div className="flex max-w-2xl flex-col gap-6">
+          <>
             <WalletForm
               key={`primary-${wallets.data.find((wallet) => wallet.slot === 'primary')?.id ?? 'new'}`}
               slot="primary"
@@ -84,7 +84,7 @@ export function WalletsPage() {
               primary={wallets.data.find((wallet) => wallet.slot === 'primary')}
               userId={user.id}
             />
-          </div>
+          </>
         )}
       </div>
     </AccountShell>
@@ -132,6 +132,8 @@ function WalletForm({
   const save = useUpsertWallet(userId)
   const announce = useAnnounce()
   const prefix = `wallet-${slot}`
+  const slotLabel = slot === 'primary' ? 'principal' : 'secundária'
+  const showSecondaryEmptyHint = slot === 'secondary' && !wallet && !sameAsPrimary
 
   function showErrors(next: FieldErrors<WalletField>) {
     setErrors(next)
@@ -160,7 +162,7 @@ function WalletForm({
     save.mutate(
       { slot, body: parsed.data },
       {
-        onSuccess: () => announce(`Carteira ${slot === 'primary' ? 'principal' : 'secundária'} salva.`),
+        onSuccess: () => announce(`Carteira ${slotLabel} salva.`),
         onError: (cause) => {
           if (cause instanceof ApiError) {
             const apiErrors = fieldErrorsFromApi(cause, FIELDS)
@@ -177,143 +179,137 @@ function WalletForm({
     if (errors[field]) setErrors((current) => ({ ...current, [field]: undefined }))
   }
 
-  return (
-    <form noValidate onSubmit={submit} className="flex flex-col gap-4 rounded-[10px] bg-surface-card p-4 md:p-6">
-      <h2 className="text-title-20 font-bold text-cream">
-        Carteira {slot === 'primary' ? 'principal' : 'secundária'}
-      </h2>
-      <FormAlert message={formError} />
-      {slot === 'secondary' ? (
-        <div>
-          <label className="flex items-center gap-3 text-body-14 text-cream">
-            <input
-              id={`${prefix}-sameAsPrimary`}
-              type="checkbox"
-              checked={sameAsPrimary}
-              disabled={!primary || save.isPending}
-              aria-describedby={errors.sameAsPrimary ? `${prefix}-sameAsPrimary-error` : undefined}
-              onChange={(event) => {
-                setSameAsPrimary(event.target.checked)
-                setErrors((current) => ({ ...current, sameAsPrimary: undefined }))
-              }}
-              className="size-4 accent-brand"
-            />
-            Igual à principal
-          </label>
-          {!primary ? <p className="mt-1 text-caption-12 text-text-secondary">Cadastre a principal primeiro.</p> : null}
-          {errors.sameAsPrimary ? (
-            <p id={`${prefix}-sameAsPrimary-error`} className="mt-1 text-caption-12 text-coral">
-              {errors.sameAsPrimary}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
+  function focusFirstField() {
+    document.getElementById(`${prefix}-displayName`)?.focus()
+  }
 
-      <fieldset disabled={sameAsPrimary || save.isPending} className="grid gap-4 disabled:opacity-60 md:grid-cols-2">
-        <WalletTextField prefix={prefix} field="displayName" label="Nome do titular" value={values.displayName} error={errors.displayName} onChange={update} />
-        <WalletTextField prefix={prefix} field="nickname" label="Apelido" value={values.nickname} error={errors.nickname} onChange={update} />
-        <SelectField
+  return (
+    <form noValidate onSubmit={submit} className="flex flex-col gap-8">
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <h2 className="text-[17px] font-bold leading-4 text-cream">Carteira {slotLabel}</h2>
+          <div className="flex shrink-0 flex-wrap items-center gap-6">
+            {slot === 'secondary' ? (
+              <label className="flex items-center gap-2 text-body-14 text-cream">
+                <input
+                  id={`${prefix}-sameAsPrimary`}
+                  type="checkbox"
+                  checked={sameAsPrimary}
+                  disabled={!primary || save.isPending}
+                  aria-label="Igual à principal"
+                  aria-describedby={errors.sameAsPrimary ? `${prefix}-sameAsPrimary-error` : undefined}
+                  onChange={(event) => {
+                    setSameAsPrimary(event.target.checked)
+                    setErrors((current) => ({ ...current, sameAsPrimary: undefined }))
+                  }}
+                  className="size-4 rounded-full accent-brand"
+                />
+                <span aria-hidden>Igual à carteira principal</span>
+              </label>
+            ) : null}
+            <button
+              type="button"
+              className="text-body-16 font-medium text-brand-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => {
+                if (slot === 'secondary' && sameAsPrimary) setSameAsPrimary(false)
+                focusFirstField()
+              }}
+            >
+              Adicionar
+            </button>
+          </div>
+        </div>
+        {slot === 'primary' ? (
+          <p className="text-body-14 leading-[15px] text-text-secondary">
+            Estas carteiras ficam disponíveis no pagamento e para receber NFTs comprados.
+          </p>
+        ) : showSecondaryEmptyHint ? (
+          <p className="text-body-14 leading-[15px] text-text-secondary">
+            Você ainda não adicionou uma carteira secundária.
+          </p>
+        ) : null}
+        {slot === 'secondary' && !primary ? (
+          <p className="text-caption-12 text-text-secondary">Cadastre a principal primeiro.</p>
+        ) : null}
+        {errors.sameAsPrimary ? (
+          <p id={`${prefix}-sameAsPrimary-error`} className="text-caption-12 text-coral">
+            {errors.sameAsPrimary}
+          </p>
+        ) : null}
+      </div>
+
+      <FormAlert message={formError} />
+
+      <fieldset
+        disabled={sameAsPrimary || save.isPending}
+        className="grid gap-6 disabled:opacity-60 md:grid-cols-2 md:gap-x-7"
+      >
+        <AccountTextField
+          id={`${prefix}-displayName`}
+          visibleLabel="Nome de exibição"
+          label={`Nome de exibição da carteira ${slotLabel}`}
+          required
+          value={values.displayName}
+          error={errors.displayName}
+          onChange={(event) => update('displayName', event.target.value)}
+        />
+        <AccountTextField
+          id={`${prefix}-nickname`}
+          visibleLabel="Apelido da carteira"
+          label={`Apelido da carteira ${slotLabel}`}
+          required
+          value={values.nickname}
+          error={errors.nickname}
+          onChange={(event) => update('nickname', event.target.value)}
+        />
+        <AccountSelectField
           id={`${prefix}-networkId`}
-          label="Rede"
+          visibleLabel="Rede"
+          label={`Rede da carteira ${slotLabel}`}
+          required
           value={values.networkId}
           error={errors.networkId}
           onChange={(value) => update('networkId', value)}
           options={NETWORKS}
         />
-        <SelectField
+        <AccountSelectField
           id={`${prefix}-provider`}
-          label="Provedor"
+          visibleLabel="Tipo de carteira"
+          label={`Provedor da carteira ${slotLabel}`}
+          required
           value={values.provider}
           error={errors.provider}
           onChange={(value) => update('provider', value)}
           options={PROVIDERS}
         />
-        <div className="md:col-span-2">
-          <WalletTextField prefix={prefix} field="address" label="Endereço" value={values.address} error={errors.address} onChange={update} />
-        </div>
-        <div className="md:col-span-2">
-          <WalletTextField prefix={prefix} field="ensName" label="ENS (opcional)" value={values.ensName} error={errors.ensName} onChange={update} />
-        </div>
+        <AccountTextField
+          id={`${prefix}-address`}
+          visibleLabel="Endereço da carteira"
+          label={`Endereço da carteira ${slotLabel}`}
+          required
+          placeholder="Endereço 0x da carteira"
+          value={values.address}
+          error={errors.address}
+          onChange={(event) => update('address', event.target.value)}
+        />
+        <AccountEnsField
+          id={`${prefix}-ensName`}
+          visibleLabel="Nome ENS"
+          label={`ENS da carteira ${slotLabel}`}
+          value={values.ensName}
+          error={errors.ensName}
+          placeholder="ENS ou carteira secundária (opcional)"
+          onChange={(value) => update('ensName', value)}
+        />
       </fieldset>
-      <Button type="submit" disabled={save.isPending} className="h-10 self-start bg-brand px-5 font-bold text-ink">
-        {save.isPending ? 'Salvando…' : `Salvar carteira ${slot === 'primary' ? 'principal' : 'secundária'}`}
+
+      <Button
+        type="submit"
+        disabled={save.isPending}
+        className="h-10 min-w-[131px] self-start rounded-[3px] bg-brand px-3 text-body-14 font-bold text-ink hover:bg-brand-accent"
+      >
+        {save.isPending ? 'Salvando…' : `Salvar carteira ${slotLabel}`}
       </Button>
     </form>
-  )
-}
-
-function WalletTextField({
-  prefix,
-  field,
-  label,
-  value,
-  error,
-  onChange,
-}: {
-  prefix: string
-  field: keyof WalletValues
-  label: string
-  value: string
-  error?: string
-  onChange: (field: keyof WalletValues, value: string) => void
-}) {
-  return (
-    <div>
-      <span aria-hidden="true" className="mb-1.5 block text-caption-13 text-text-secondary">
-        {label}
-      </span>
-      <TextField
-        id={`${prefix}-${field}`}
-        label={`${label} da carteira ${prefix.endsWith('primary') ? 'principal' : 'secundária'}`}
-        variant="dialog"
-        value={value}
-        error={error}
-        onChange={(event) => onChange(field, event.target.value)}
-      />
-    </div>
-  )
-}
-
-function SelectField({
-  id,
-  label,
-  value,
-  error,
-  onChange,
-  options,
-}: {
-  id: string
-  label: string
-  value: string
-  error?: string
-  onChange: (value: string) => void
-  options: { id: string; label: string }[]
-}) {
-  const errorId = `${id}-error`
-  return (
-    <div>
-      <label htmlFor={id} className="mb-1.5 block text-caption-13 text-text-secondary">
-        {label}
-      </label>
-      <select
-        id={id}
-        value={value}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full rounded-[5px] border border-border-field bg-surface-card px-3 text-body-14 text-cream outline-none focus:border-brand focus:ring-2 focus:ring-ring/40"
-      >
-        {options.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      {error ? (
-        <p id={errorId} className="mt-1.5 text-caption-12 text-coral">
-          {error}
-        </p>
-      ) : null}
-    </div>
   )
 }

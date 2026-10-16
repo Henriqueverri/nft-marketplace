@@ -46,8 +46,8 @@ export function AuthDialog({ mode, redirect, expired }: AuthDialogProps) {
           document.getElementById(mode === 'login' ? 'login-email' : 'signup-username')?.focus()
         }}
         className={cn(
-          'top-[160px] flex max-h-[calc(100dvh-180px)] w-[500px] max-w-[calc(100vw-32px)] translate-y-0 flex-col gap-0 overflow-y-auto bg-surface-card p-0 pb-12 text-cream ring-0 sm:max-w-[500px]',
-          mode === 'login' ? 'min-h-[600px] rounded-none' : 'min-h-[656px] rounded-lg',
+          'flex max-h-[calc(100dvh-32px)] w-[500px] max-w-[calc(100vw-32px)] flex-col gap-0 overflow-y-auto bg-surface-card p-0 pb-12 text-cream ring-0 sm:max-w-[500px]',
+          mode === 'login' ? 'min-h-[min(600px,calc(100dvh-32px))] rounded-none' : 'min-h-[min(656px,calc(100dvh-32px))] rounded-lg',
         )}
       >
         <DialogClose

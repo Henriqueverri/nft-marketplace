@@ -30,7 +30,7 @@ export function OrderHistoryPage() {
     <AccountShell>
       <div className="flex flex-col gap-6">
         <header>
-          <h1 className="text-heading-28 font-bold text-cream">Histórico de pedidos</h1>
+          <h1 className="text-heading-28 font-bold text-cream max-md:sr-only">Histórico de pedidos</h1>
           <p className="mt-2 text-body-14 text-text-secondary">
             Acompanhe seus pagamentos e consulte os detalhes de cada pedido.
           </p>

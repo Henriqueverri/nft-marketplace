@@ -1,4 +1,5 @@
 import { useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import avatarPlaceholder from '@/assets/icons/account/avatar-placeholder.svg'
 import { Button } from '@/components/ui/button'
 import { displayNameSchema, type AccountProfile } from '@/contracts/account'
 import { changePasswordFormSchema } from '@/contracts/auth'
@@ -11,9 +12,17 @@ import {
   firstInvalidField,
   type FieldErrors,
 } from '@/shared/forms/form-errors'
-import { FormAlert, PasswordField, TextField } from '@/shared/forms/fields'
+import {
+  AccountEnsField,
+  AccountReadOnlyField,
+  AccountTextField,
+  FieldLabel,
+  FormAlert,
+  PasswordField,
+} from '@/shared/forms/fields'
 import { useAnnounce } from '@/shared/feedback/announcer-context'
 import { clearDraft, readDraft, writeDraft } from '@/shared/session/drafts'
+import { cn } from '@/lib/utils'
 import { AccountShell } from './AccountShell'
 import { resizeAvatar } from './avatar'
 import { useChangePassword, useProfile, useUpdateAvatar, useUpdateProfile } from './queries'
@@ -27,7 +36,7 @@ export function ProfilePage() {
   return (
     <AccountShell>
       <div className="flex flex-col gap-8">
-        <h1 className="text-heading-28 font-bold text-cream">Perfil do colecionador</h1>
+        <h1 className="text-body-16 font-bold leading-4 text-cream max-md:sr-only">Perfil do colecionador</h1>
         {profile.isPending ? (
           <p role="status" className="text-body-14 text-text-secondary">
             Carregando perfil…
@@ -78,55 +87,61 @@ function ProfileDetails({ profile }: { profile: AccountProfile }) {
     )
   }
 
+  const ensLocal = profile.ensName?.replace(/\.eth$/i, '') ?? ''
+
   return (
-    <div className="flex max-w-2xl flex-col gap-10">
-      <dl className="grid max-w-xl grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-body-14">
-        <dt className="text-text-secondary">Nome de exibição</dt>
-        <dd data-testid="profile-display-name" className="text-cream">
-          {profile.displayName}
-        </dd>
-        <dt className="text-text-secondary">Nome de usuário</dt>
-        <dd data-testid="profile-username" className="text-cream">
-          @{profile.username}
-        </dd>
-        <dt className="text-text-secondary">E-mail</dt>
-        <dd data-testid="profile-email" className="text-cream">
-          {profile.email}
-        </dd>
+    <div className="flex w-full max-w-[862px] flex-col gap-8">
+      <dl className="sr-only">
+        <dt>Nome de exibição</dt>
+        <dd data-testid="profile-display-name">{profile.displayName}</dd>
+        <dt>Nome de usuário</dt>
+        <dd data-testid="profile-username">@{profile.username}</dd>
+        <dt>E-mail</dt>
+        <dd data-testid="profile-email">{profile.email}</dd>
       </dl>
 
-      <AvatarForm profile={profile} />
-
-      <form noValidate onSubmit={handleSubmit} className="flex flex-col gap-3 rounded-[10px] bg-surface-card p-4 md:p-6">
-        <h2 className="text-title-20 font-bold text-cream">Dados do perfil</h2>
+      <form noValidate onSubmit={handleSubmit} className="flex flex-col gap-6">
         {showRestored ? (
           <p role="status" className="text-caption-13 text-amber">
             Restauramos a alteração que você não chegou a salvar.
           </p>
         ) : null}
-        <span aria-hidden="true" className="text-caption-13 text-text-secondary">
-          Nome de exibição
-        </span>
-        <TextField
-          id="profile-display-name-input"
-          label="Nome de exibição"
-          variant="dialog"
-          autoComplete="nickname"
-          placeholder="Nome de exibição"
-          value={value}
-          onChange={(event) => {
-            setValue(event.target.value)
-            writeDraft(profile.id, DISPLAY_NAME_DRAFT, event.target.value)
-            if (error) setError(undefined)
-          }}
-          error={error}
-          inputRef={inputRef}
-        />
+
+        <div className="grid gap-6 md:grid-cols-2 md:gap-x-7">
+          <AccountTextField
+            id="profile-display-name-input"
+            visibleLabel="Nome de exibição"
+            label="Nome de exibição"
+            required
+            autoComplete="nickname"
+            value={value}
+            onChange={(event) => {
+              setValue(event.target.value)
+              writeDraft(profile.id, DISPLAY_NAME_DRAFT, event.target.value)
+              if (error) setError(undefined)
+            }}
+            error={error}
+            inputRef={inputRef}
+          />
+          <AccountReadOnlyField label="Nome de usuário" required value={profile.username} />
+          <AccountReadOnlyField label="E-mail" required value={profile.email} />
+          <AccountEnsField
+            id="profile-ens"
+            visibleLabel="Nome ENS"
+            label="Nome ENS"
+            required
+            value={ensLocal}
+            readOnly
+          />
+          <AccountReadOnlyField label="Apelido da carteira" required value={profile.walletNickname || '—'} />
+          <AvatarForm profile={profile} />
+        </div>
+
         <Button
           type="submit"
           disabled={update.isPending}
           aria-busy={update.isPending}
-          className="h-10 self-start rounded-[5px] bg-brand px-5 text-body-14 font-bold text-ink hover:bg-brand-accent"
+          className="h-10 w-[131px] self-start rounded-[3px] bg-brand px-0 text-body-14 font-bold text-ink hover:bg-brand-accent"
         >
           {update.isPending ? 'Salvando…' : 'Salvar nome'}
         </Button>
@@ -178,27 +193,25 @@ function AvatarForm({ profile }: { profile: AccountProfile }) {
   }
 
   return (
-    <section aria-labelledby="avatar-title" className="rounded-[10px] bg-surface-card p-4 md:p-6">
-      <h2 id="avatar-title" className="text-title-20 font-bold text-cream">
-        Avatar
-      </h2>
-      <div className="mt-4 flex flex-wrap items-center gap-4">
+    <div className="flex flex-col gap-2.5">
+      <FieldLabel>Avatar</FieldLabel>
+      <div className="flex flex-wrap items-center gap-6">
         {preview ? (
           <img
             src={preview}
             alt="Pré-visualização do avatar"
             data-testid="avatar-preview"
-            className="size-24 rounded-full object-cover"
+            className="size-[50px] rounded-full object-cover"
           />
         ) : (
-          <div aria-label="Sem avatar" className="flex size-24 items-center justify-center rounded-full bg-surface-raised text-heading-28 text-sand">
-            {profile.displayName.slice(0, 1).toUpperCase()}
+          <div
+            aria-label="Sem avatar"
+            className="flex size-[50px] items-center justify-center rounded-full border border-border-field bg-surface-raised"
+          >
+            <img src={avatarPlaceholder} alt="" aria-hidden className="size-6" />
           </div>
         )}
-        <div className="flex flex-col gap-3">
-          <label htmlFor="profile-avatar" className="text-caption-13 text-text-secondary">
-            Imagem PNG, JPEG ou WebP, até 5 MB
-          </label>
+        <div className="flex flex-wrap items-center gap-5">
           <input
             ref={fileRef}
             id="profile-avatar"
@@ -207,27 +220,48 @@ function AvatarForm({ profile }: { profile: AccountProfile }) {
             disabled={processing || mutation.isPending}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? 'profile-avatar-error' : undefined}
+            aria-label="Imagem PNG, JPEG ou WebP, até 5 MB"
             onChange={(event) => void choose(event)}
-            className="max-w-full text-body-14 text-cream file:mr-3 file:rounded-[5px] file:border-0 file:bg-brand file:px-3 file:py-2 file:font-bold file:text-ink"
+            className="sr-only"
           />
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" disabled={!changed || processing || mutation.isPending} onClick={() => save(preview)}>
-              {processing ? 'Processando…' : mutation.isPending ? 'Salvando…' : 'Salvar avatar'}
-            </Button>
-            {(preview || profile.avatarUrl) && (
-              <Button type="button" variant="outline" disabled={mutation.isPending} onClick={() => save(null)}>
-                Remover avatar
-              </Button>
+          <button
+            type="button"
+            disabled={processing || mutation.isPending}
+            onClick={() => fileRef.current?.click()}
+            className="flex h-10 w-[98px] items-center justify-center rounded-[3px] bg-brand text-body-14 font-bold text-ink outline-none hover:bg-brand-accent focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+          >
+            Alterar
+          </button>
+          {(preview || profile.avatarUrl) && (
+            <button
+              type="button"
+              aria-label="Remover avatar"
+              disabled={mutation.isPending}
+              onClick={() => save(null)}
+              className="text-body-14 text-cream outline-none hover:text-brand-accent focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+            >
+              Remover
+            </button>
+          )}
+          <Button
+            type="button"
+            disabled={!changed || processing || mutation.isPending}
+            onClick={() => save(preview)}
+            className={cn(
+              'h-10 rounded-[3px] bg-brand px-4 text-body-14 font-bold text-ink',
+              !changed && 'sr-only',
             )}
-          </div>
+          >
+            {processing ? 'Processando…' : mutation.isPending ? 'Salvando…' : 'Salvar avatar'}
+          </Button>
         </div>
       </div>
       {error ? (
-        <p id="profile-avatar-error" role="alert" className="mt-3 text-caption-13 text-coral">
+        <p id="profile-avatar-error" role="alert" className="text-caption-13 text-coral">
           {error}
         </p>
       ) : null}
-    </section>
+    </div>
   )
 }
 
@@ -286,43 +320,36 @@ function PasswordForm() {
   }
 
   return (
-    <form noValidate onSubmit={submit} className="flex flex-col gap-3 rounded-[10px] bg-surface-card p-4 md:p-6">
-      <h2 className="text-title-20 font-bold text-cream">Alterar senha</h2>
+    <form noValidate onSubmit={submit} className="flex max-w-[417px] flex-col gap-6">
+      <h2 className="text-body-16 font-medium leading-4 text-cream">Alterar senha</h2>
       <FormAlert message={formError} />
-      <PasswordField
-        id={PASSWORD_IDS.currentPassword}
-        label="Senha atual"
-        toggleLabel="Mostrar caracteres da senha"
-        variant="dialog"
-        autoComplete="current-password"
-        placeholder="Senha atual"
-        value={values.currentPassword}
-        onChange={(event) => update('currentPassword', event.target.value)}
-        error={errors.currentPassword}
-      />
-      <PasswordField
-        id={PASSWORD_IDS.newPassword}
-        label="Nova senha"
-        toggleLabel="Mostrar caracteres da senha"
-        variant="dialog"
-        autoComplete="new-password"
-        placeholder="Nova senha"
-        value={values.newPassword}
-        onChange={(event) => update('newPassword', event.target.value)}
-        error={errors.newPassword}
-      />
-      <PasswordField
-        id={PASSWORD_IDS.confirmPassword}
-        label="Confirmar nova senha"
-        toggleLabel="Mostrar caracteres da senha"
-        variant="dialog"
-        autoComplete="new-password"
-        placeholder="Confirmar nova senha"
-        value={values.confirmPassword}
-        onChange={(event) => update('confirmPassword', event.target.value)}
-        error={errors.confirmPassword}
-      />
-      <Button type="submit" disabled={change.isPending} className="h-10 self-start bg-brand px-5 font-bold text-ink">
+      {(
+        [
+          ['currentPassword', 'Senha atual', 'current-password'],
+          ['newPassword', 'Nova senha', 'new-password'],
+          ['confirmPassword', 'Confirmar nova senha', 'new-password'],
+        ] as const
+      ).map(([field, fieldLabel, autoComplete]) => (
+        <div key={field} className="flex flex-col gap-2.5">
+          <FieldLabel htmlFor={PASSWORD_IDS[field]}>{fieldLabel}</FieldLabel>
+          <PasswordField
+            id={PASSWORD_IDS[field]}
+            label={fieldLabel}
+            toggleLabel="Mostrar caracteres da senha"
+            variant="account"
+            autoComplete={autoComplete}
+            value={values[field]}
+            onChange={(event) => update(field, event.target.value)}
+            error={errors[field]}
+            hideSrLabel
+          />
+        </div>
+      ))}
+      <Button
+        type="submit"
+        disabled={change.isPending}
+        className="h-10 w-[131px] self-start rounded-[3px] bg-brand px-0 font-bold text-ink"
+      >
         {change.isPending ? 'Alterando…' : 'Alterar senha'}
       </Button>
     </form>
